@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Building2, CheckCircle, Globe, Loader2, Palette } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 
@@ -9,6 +10,8 @@ type SetupWizardModalProps = {
 
 export default function SetupWizardModal({ onComplete }: SetupWizardModalProps) {
   const { user } = useAuth();
+  const location = useLocation();
+  const initialPlan = (location.state as { plan?: string } | null)?.plan || 'professional';
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [formData, setFormData] = useState({
@@ -18,7 +21,7 @@ export default function SetupWizardModal({ onComplete }: SetupWizardModalProps) 
     domain: '',
     hasDomain: 'nao',
     template: 'professional',
-    plan: 'professional',
+    plan: initialPlan,
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
