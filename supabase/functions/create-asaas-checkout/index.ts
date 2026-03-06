@@ -1,112 +1,135 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
 
-// Cabeçalhos CORS para permitir que o navegador chame esta função
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-application-name',
 }
 
 serve(async (req) => {
-  // Lida com a requisição de preflight (OPTIONS) do navegador
+  // Responde ao 'pre-flight' do navegador (CORS)
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
 
   try {
-    // 1. Extrair os dados enviados pelo SetupWizardModal
-    const { name, email, cpfCnpj, phone, companyName, plan_name, template, domain } = await req.json()
+    // 1. Leitura segura do JSON do front-end
+    const reqText = await req.text()
+    if (!reqText) throw new Error("A requisição do CRM veio vazia.")
+    
+    const { company_id, plan, cycle } = JSON.parse(reqText)
+    if (!company_id || !plan) throw new Error("Faltam parâmetros obrigatórios.")
 
-    // 2. Inicializar o cliente Supabase usando o Token de quem fez a requisição (o cliente logado)
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
-    )
-
-    // Verificar se o utilizador está realmente autenticado
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser()
-    if (userError || !user) {
-      console.error("🚨 ERRO DE AUTH NO BACKEND:", userError)
-      throw new Error(`Utilizador não autenticado no servidor: ${userError?.message || 'Sem sessão'}`)
-    }
-
-    // 3. Inicializar o cliente ADMIN (Service Role) para ultrapassar o RLS e poder criar a empresa
+    // 2. Inicializa o Supabase
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    // --- DAQUI PARA BAIXO É O MOTOR DE TRANSAÇÃO ---
-
-    // A) Criar a Empresa na tabela `companies`
     const { data: company, error: companyError } = await supabaseAdmin
       .from('companies')
-      .insert({
-        name: companyName,
-        slug: companyName.toLowerCase().replace(/[^a-z0-9]/g, '-'),
-        domain: domain,
-        template: template,
-        cpf_cnpj: cpfCnpj,
-        phone: phone,
-        plan: plan_name || 'Starter',
-        active: true // A empresa existe, mas o contrato dita se ele tem acesso financeiro
-      })
-      .select()
+      .select('*')
+      .eq('id', company_id)
       .single()
 
-    if (companyError) throw new Error(`Erro ao criar imobiliária: ${companyError.message}`)
+    if (companyError || !company) throw new Error('Empresa não encontrada no banco.')
 
-    // B) Criar o Contrato SaaS na tabela `saas_contracts` (7 Dias de Trial - Pending)
-    const startDate = new Date()
-    const endDate = new Date()
-    endDate.setDate(startDate.getDate() + 7) // Soma 7 dias
-
-    const { error: contractError } = await supabaseAdmin
-      .from('saas_contracts')
-      .insert({
-        company_id: company.id,
-        plan_name: plan_name || 'Starter',
-        status: 'pending', // Fica pendente até ele pagar a primeira fatura
-        start_date: startDate.toISOString().split('T')[0],
-        end_date: endDate.toISOString().split('T')[0]
-      })
-
-    if (contractError) throw new Error(`Erro ao criar contrato: ${contractError.message}`)
-
-    // C) Atualizar o Profile do Utilizador (Vincular à empresa e ativar a conta)
-    const { error: profileError } = await supabaseAdmin
-      .from('profiles')
-      .update({
-        company_id: company.id,
-        active: true, // Agora ele é um corretor/admin ativo dentro desta imobiliária
-        role: 'admin' // O criador da empresa é sempre o Admin!
-      })
-      .eq('id', user.id)
-
-    if (profileError) throw new Error(`Erro ao vincular perfil: ${profileError.message}`)
-
-    // ==========================================================
-    // D) INTEGRAÇÃO ASAAS (AQUI ENTRA A CHAMADA PARA O GATEWAY)
-    // ==========================================================
-    /* TODO: Aqui faremos o POST para a API do Asaas para:
-      1. Criar o Customer (Cliente)
-      2. Criar a Subscription (Assinatura com vencimento para daqui a 7 dias)
-      3. Salvar o asaas_customer_id de volta na tabela companies.
-    */
+    const cleanDocument = company.document?.replace(/\D/g, '') || ''
+    const ASAAS_API_KEY = Deno.env.get('ASAAS_API_KEY')
     
-    // Retorno de Sucesso para o Front-end
+    // 🛑 ESCOLHA A URL CORRETA AQUI:
+    // Se a chave for de teste, a URL TEM QUE SER sandbox.asaas.com
+    // Se a chave for real/produção, a URL TEM QUE SER api.asaas.com
+    const ASAAS_URL = 'https://sandbox.asaas.com/api/v3' // Mude para api.asaas.com/v3 se for chave real
+
+    // 3. Cadastra o Cliente no Asaas (Com leitura segura)
+    const customerRes = await fetch(`${ASAAS_URL}/customers`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'access_token': ASAAS_API_KEY!
+      },
+      body: JSON.stringify({
+        name: company.name,
+        cpfCnpj: cleanDocument,
+        phone: company.phone,
+        mobilePhone: company.phone
+      })
+    })
+    
+    // Pega a resposta em TEXTO puro primeiro para evitar quebrar o servidor
+    const customerText = await customerRes.text()
+    let customerData
+    try {
+      customerData = JSON.parse(customerText)
+    } catch (e) {
+      throw new Error(`Erro Crítico na API Asaas (Cliente). Status: ${customerRes.status}. Resposta: ${customerText}`)
+    }
+
+    if (!customerRes.ok) throw new Error(`Erro ao criar cliente Asaas: ${customerData.errors?.[0]?.description || customerText}`)
+
+    // 4. Preços dos Planos (Mensal e Anual com 20% de desconto)
+    const planPrices: Record<string, { monthly: number, yearly: number }> = {
+      starter: { monthly: 54.90, yearly: 527.04 },
+      basic: { monthly: 74.90, yearly: 719.04 },
+      profissional: { monthly: 119.90, yearly: 1151.04 },
+      professional: { monthly: 119.90, yearly: 1151.04 },
+      business: { monthly: 179.90, yearly: 1727.04 },
+      premium: { monthly: 249.90, yearly: 2399.04 },
+      elite: { monthly: 349.90, yearly: 3359.04 }
+    }
+
+    const planKey = (plan || 'profissional').toLowerCase()
+    const isYearly = cycle === 'yearly'
+    const planValue = isYearly ? planPrices[planKey].yearly : planPrices[planKey].monthly
+    const asaasCycle = isYearly ? 'YEARLY' : 'MONTHLY'
+
+    const nextDueDate = new Date()
+    nextDueDate.setDate(nextDueDate.getDate() + 7)
+
+    // 5. Cria a Assinatura (Com leitura segura)
+    const subRes = await fetch(`${ASAAS_URL}/subscriptions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'access_token': ASAAS_API_KEY!
+      },
+      body: JSON.stringify({
+        customer: customerData.id,
+        billingType: 'UNDEFINED',
+        value: planValue,
+        nextDueDate: nextDueDate.toISOString().split('T')[0],
+        cycle: asaasCycle,
+        description: `Assinatura Elevatio CRM - Plano ${planKey.toUpperCase()} (${isYearly ? 'Anual' : 'Mensal'})`
+      })
+    })
+
+    const subText = await subRes.text()
+    let subData
+    try {
+      subData = JSON.parse(subText)
+    } catch (e) {
+      throw new Error(`Erro Crítico na API Asaas (Assinatura). Status: ${subRes.status}. Resposta: ${subText}`)
+    }
+
+    if (!subRes.ok) throw new Error(`Erro ao criar assinatura Asaas: ${subData.errors?.[0]?.description || subText}`)
+
+    // 6. Salva no Banco
+    await supabaseAdmin
+      .from('companies')
+      .update({
+        asaas_customer_id: customerData.id,
+        asaas_subscription_id: subData.id
+      })
+      .eq('id', company_id)
+
     return new Response(
-      JSON.stringify({ 
-        success: true, 
-        message: 'Imobiliária configurada com sucesso!',
-        company_id: company.id 
-      }),
+      JSON.stringify({ success: true, asaas_customer: customerData.id }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
     )
 
   } catch (error: any) {
-    console.error("ERRO NA EDGE FUNCTION:", error.message)
+    console.error('ERRO EDGE FUNCTION:', error.message)
     return new Response(
       JSON.stringify({ error: error.message }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }

@@ -1,24 +1,54 @@
 import React, { useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Building2, CheckCircle, Globe, Loader2, Palette } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import type { PlanType } from '../config/plans';
 import { supabase } from '../lib/supabase';
+import { Icons } from './Icons';
 
 type SetupWizardModalProps = {
   onComplete: () => void;
 };
 
+const normalizePlanFromNav = (value: unknown): PlanType | undefined => {
+  if (typeof value !== 'string') return undefined;
+
+  const v = value.trim().toLowerCase();
+  if (!v) return undefined;
+
+  // Compatibilidade com slugs antigos/inglês vindos da Landing Page
+  if (v === 'professional' || v === 'profissional') return 'profissional';
+
+  if (v === 'free') return 'free';
+  if (v === 'starter') return 'starter';
+  if (v === 'basic') return 'basic';
+  if (v === 'business') return 'business';
+  if (v === 'premium') return 'premium';
+  if (v === 'elite') return 'elite';
+
+  return undefined;
+};
+
 export default function SetupWizardModal({ onComplete }: SetupWizardModalProps) {
   const { user } = useAuth();
+  const location = useLocation();
+
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  
+  // Normaliza o nome do plano para evitar falhas na busca do banco de dados (ex: professional -> profissional)
+  const initialPlanRaw = location.state?.plan || localStorage.getItem('trimoveis_selected_plan') || localStorage.getItem('elevatio_selected_plan') || 'profissional';
+  const initialPlan = normalizePlanFromNav(initialPlanRaw) || 'profissional';
+  
   const [formData, setFormData] = useState({
     companyName: '',
     document: '',
     phone: '',
     domain: '',
     hasDomain: 'nao',
-    template: 'professional',
-    plan: 'professional',
+    template: 'minimalist', // Default para o template minimalista
+    plan: initialPlan,
+    billingCycle: location.state?.cycle || localStorage.getItem('trimoveis_billing_cycle') || 'monthly'
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -41,7 +71,9 @@ export default function SetupWizardModal({ onComplete }: SetupWizardModalProps) 
           subdomain: slug,
           document: formData.document,
           phone: formData.phone,
+          template: formData.template, // Agora lê o template escolhido nos radio buttons
           plan_status: 'trial',
+          plan: formData.plan,
           trial_ends_at: trialEnds.toISOString(),
         }])
         .select()
@@ -61,17 +93,46 @@ export default function SetupWizardModal({ onComplete }: SetupWizardModalProps) 
           .eq('id', user.id);
 
         if (profileError) throw new Error('Erro ao vincular perfil: ' + profileError.message);
+
+        // Criar contrato de SaaS (Baseado no plans.ts)
+        try {
+          const { error: contractError } = await supabase.from('saas_contracts').insert([{
+            company_id: newCompany.id,
+            plan_id: null, // Ignoramos a tabela saas_plans, usamos o config local
+            plan_name: formData.plan, // Nome oficial do plano (ex: 'profissional', 'elite')
+            status: 'pending', // Status vital para liberar o trial via Front-end
+            start_date: new Date().toISOString(),
+            end_date: trialEnds.toISOString(),
+            billing_cycle: formData.billingCycle
+          }]);
+
+          if (contractError) {
+            console.error('Erro do Supabase ao inserir contrato:', contractError);
+          }
+        } catch (contractError) {
+          console.error('Crash ao tentar criar contrato:', contractError);
+        }
       }
 
       try {
-        await supabase.functions.invoke('create-asaas-checkout', {
-          body: { company_id: newCompany.id, plan: formData.plan },
+        const { error: asaasError } = await supabase.functions.invoke('create-asaas-checkout', {
+          body: { company_id: newCompany.id, plan: formData.plan, cycle: formData.billingCycle }
         });
-      } catch (asaasError) {
-        console.warn('Aviso: Falha ao integrar Asaas. Empresa criada.', asaasError);
+        if (asaasError) console.error('Erro na integração Asaas:', asaasError);
+      } catch (e) {
+        console.error('Falha ao chamar webhook Asaas:', e);
       }
 
+      // Limpar o cache do navegador após sucesso
+      localStorage.removeItem('trimoveis_selected_plan');
+      localStorage.removeItem('elevatio_selected_plan');
+      localStorage.removeItem('trimoveis_billing_cycle'); // CORREÇÃO DO BUG ANUAL
+
       onComplete();
+
+      // Força o recarregamento total da aplicação para o SessionManager 
+      // ler a nova empresa (trial) e o novo contrato (pending) direto do banco!
+      window.location.href = '/admin/dashboard';
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Erro inesperado ao configurar a sua conta.';
       setErrorMsg(message);
@@ -93,6 +154,46 @@ export default function SetupWizardModal({ onComplete }: SetupWizardModalProps) 
               <h3 className="text-brand-400 font-bold flex items-center gap-2">
                 <Building2 className="w-5 h-5" /> Dados da Imobiliária
               </h3>
+              <div className="mb-4 flex bg-[#1a1a1a] p-1 rounded-xl w-fit border border-white/10">
+                <button
+                  type="button"
+                  onClick={() => setFormData({...formData, billingCycle: 'monthly'})}
+                  className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${
+                    formData.billingCycle === 'monthly' 
+                      ? 'bg-white text-slate-900' 
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Mensal
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFormData({...formData, billingCycle: 'yearly'})}
+                  className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${
+                    formData.billingCycle === 'yearly' 
+                      ? 'bg-brand-600 text-white' 
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Anual
+                  <span className="bg-brand-500/30 text-brand-200 text-[10px] px-1.5 py-0.5 rounded-md border border-brand-400/20">-20%</span>
+                </button>
+              </div>
+              <div className="mb-4">
+                <label className="block text-sm font-bold text-gray-400 mb-1">Confirme seu Plano</label>
+                <select
+                  value={formData.plan}
+                  onChange={(e) => setFormData({ ...formData, plan: e.target.value })}
+                  className="w-full bg-[#1a1a1a] border border-white/10 rounded-lg px-4 py-2.5 text-white outline-none focus:border-brand-500"
+                >
+                  <option value="starter">Starter</option>
+                  <option value="basic">Basic</option>
+                  <option value="profissional">Profissional</option>
+                  <option value="business">Business</option>
+                  <option value="premium">Premium</option>
+                  <option value="elite">Elite</option>
+                </select>
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm text-gray-400 mb-1">Nome da Imobiliária</label>
@@ -156,13 +257,14 @@ export default function SetupWizardModal({ onComplete }: SetupWizardModalProps) 
             </div>
             <hr className="border-white/5" />
             <div className="space-y-4">
-              <h3 className="text-brand-400 font-bold flex items-center gap-2">
-                <Palette className="w-5 h-5" /> Visual do Site
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <span className="w-8 h-8 rounded-full bg-brand-500/20 text-brand-500 flex items-center justify-center text-sm">3</span>
+                Visual do Site
               </h3>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <label
-                  className={`cursor-pointer border rounded-xl p-4 transition-all ${
-                    formData.template === 'minimalista'
+                  className={`cursor-pointer border rounded-xl p-4 transition-all relative overflow-hidden ${
+                    formData.template === 'minimalist'
                       ? 'border-brand-500 bg-brand-500/10'
                       : 'border-white/10 bg-[#1a1a1a] hover:border-white/30'
                   }`}
@@ -171,15 +273,17 @@ export default function SetupWizardModal({ onComplete }: SetupWizardModalProps) 
                     type="radio"
                     name="template"
                     className="hidden"
-                    value="minimalista"
+                    value="minimalist"
+                    checked={formData.template === 'minimalist'}
                     onChange={(e) => setFormData({ ...formData, template: e.target.value })}
                   />
                   <div className="font-bold text-white mb-1">Minimalista</div>
+                  <p className="text-xs text-slate-400">Design limpo, claro e focado nos imóveis.</p>
                 </label>
                 <label
-                  className={`cursor-pointer border rounded-xl p-4 transition-all ${
-                    formData.template === 'luxo'
-                      ? 'border-brand-500 bg-brand-500/10'
+                  className={`cursor-pointer border rounded-xl p-4 transition-all relative overflow-hidden ${
+                    formData.template === 'luxury'
+                      ? 'border-amber-500 bg-amber-500/10'
                       : 'border-white/10 bg-[#1a1a1a] hover:border-white/30'
                   }`}
                 >
@@ -187,10 +291,54 @@ export default function SetupWizardModal({ onComplete }: SetupWizardModalProps) 
                     type="radio"
                     name="template"
                     className="hidden"
-                    value="luxo"
+                    value="luxury"
+                    checked={formData.template === 'luxury'}
                     onChange={(e) => setFormData({ ...formData, template: e.target.value })}
                   />
-                  <div className="font-bold text-yellow-400 mb-1">Padrão Luxo</div>
+                  <div className="font-bold text-amber-400 mb-1 flex items-center gap-1">
+                    Luxo <Icons.Crown size={14} />
+                  </div>
+                  <p className="text-xs text-slate-400">Tons escuros e elegantes para alto padrão.</p>
+                </label>
+                <label
+                  className={`cursor-pointer border rounded-xl p-4 transition-all relative overflow-hidden ${
+                    formData.template === 'modern'
+                      ? 'border-blue-500 bg-blue-500/10'
+                      : 'border-white/10 bg-[#1a1a1a] hover:border-white/30'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="template"
+                    className="hidden"
+                    value="modern"
+                    checked={formData.template === 'modern'}
+                    onChange={(e) => setFormData({ ...formData, template: e.target.value })}
+                  />
+                  <div className="font-bold text-blue-400 mb-1 flex items-center gap-1">
+                    Moderno <Icons.Zap size={14} />
+                  </div>
+                  <p className="text-xs text-slate-400">Layout arrojado, cantos arredondados e cores vivas.</p>
+                </label>
+                <label
+                  className={`cursor-pointer border rounded-xl p-4 transition-all relative overflow-hidden ${
+                    formData.template === 'custom'
+                      ? 'border-purple-500 bg-purple-500/10'
+                      : 'border-white/10 bg-[#1a1a1a] hover:border-white/30'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="template"
+                    className="hidden"
+                    value="custom"
+                    checked={formData.template === 'custom'}
+                    onChange={(e) => setFormData({ ...formData, template: e.target.value })}
+                  />
+                  <div className="font-bold text-purple-400 mb-1 flex items-center gap-1">
+                    Sob Medida <Icons.Code size={14} />
+                  </div>
+                  <p className="text-xs text-slate-400">Design exclusivo feito pela nossa equipe.</p>
                 </label>
               </div>
             </div>

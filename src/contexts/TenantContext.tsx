@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 
 const MASTER_DOMAINS = [
   'localhost', // Para testes locais do CRM Mestre
+  'lvh.me', // Adicionado para testes de subdomínio local
   'app-elevatiovendas.vercel.app', // Para futuro deploy gratuito
   'elevatiovendas.com.br',
   'www.elevatiovendas.com.br',
@@ -12,11 +13,15 @@ const MASTER_DOMAINS = [
 export type Company = {
   id: string;
   name: string;
-  slug: string | null;
+  subdomain: string | null;
   domain: string | null;
   logo_url?: string | null;
+  logo_white_url?: string | null;
   plan?: string | null;
   active?: boolean | null;
+  phone?: string | null;
+  email?: string | null;
+  address?: string | null;
   [key: string]: unknown;
 };
 
@@ -49,7 +54,17 @@ const getHostData = (hostname: string): {
     return { isMasterDomain: true, slug: null, customDomain: null };
   }
 
-  if (normalizedHostname.endsWith('.localhost')) {
+  // Teste local com lvh.me (Pode ser bloqueado por ISP)
+  if (normalizedHostname.endsWith('.lvh.me')) {
+    return {
+      isMasterDomain: false,
+      slug: normalizedHostname.replace(/\.lvh\.me$/, ''),
+      customDomain: null,
+    };
+  }
+
+  // Teste local nativo do Chrome/Edge (*.localhost)
+  if (normalizedHostname.endsWith('.localhost') && normalizedHostname !== 'localhost') {
     return {
       isMasterDomain: false,
       slug: normalizedHostname.replace(/\.localhost$/, ''),
@@ -90,6 +105,7 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     const resolveTenant = async () => {
       const hostname = window.location.hostname;
+      const cleanHostname = hostname.replace('www.', '');
       const hostData = getHostData(hostname);
 
       setIsMasterDomain(hostData.isMasterDomain);
@@ -105,12 +121,15 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       try {
         const filters: string[] = [];
 
+        // Busca por domínio customizado (ex: imobiliariadojoao.com.br)
         if (hostData.customDomain) {
-          filters.push(`domain.eq.${hostData.customDomain}`);
+          filters.push(`domain.eq.${cleanHostname}`);
         }
 
+        // Busca por slug/subdomain (ex: imobilaria.elevatiovendas.com)
         if (hostData.slug) {
-          filters.push(`slug.eq.${hostData.slug}`);
+          filters.push(`subdomain.eq.${hostData.slug}`);
+          filters.push(`slug.eq.${hostData.slug}`); // Blindagem extra
         }
 
         const filterString = filters.join(',');
