@@ -2,6 +2,7 @@
 
 export interface SiteData {
   logo_url: string | null;
+  logo_alt_url?: string | null;
   favicon_url: string | null;
   hero_image_url: string | null;
   hero_title: string | null;
@@ -10,6 +11,8 @@ export interface SiteData {
   about_image_url: string | null;
   primary_color: string;
   secondary_color: string;
+  show_partnerships?: boolean;
+  partners?: string[];
   contact: { 
     email: string | null; 
     phone: string | null; 

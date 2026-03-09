@@ -295,6 +295,7 @@ const Home: React.FC = () => {
       </section>
 
       {/* 5. NOSSAS PARCERIAS (Marquee) */}
+      {siteData?.show_partnerships !== false && (
       <section className="py-12 bg-white border-t border-slate-100 overflow-hidden">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-8">
           <h3 className="text-center text-sm font-bold tracking-widest text-slate-400 uppercase">Nossos Parceiros</h3>
@@ -328,6 +329,7 @@ const Home: React.FC = () => {
           }
         `}} />
       </section>
+      )}
     </div>
   );
 };

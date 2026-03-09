@@ -7,7 +7,7 @@ import { SiteData } from '../types';
 import { Palette, Image, Info, Mail, Loader2, Save, ExternalLink, Upload, X } from 'lucide-react';
 
 type TabId = 'identity' | 'hero' | 'about' | 'contact';
-type AssetType = 'logo' | 'hero' | 'favicon' | 'about';
+type AssetType = 'logo' | 'logo_alt' | 'hero' | 'favicon' | 'about';
 
 interface ImageUploaderProps {
   label: string;
@@ -128,12 +128,14 @@ export default function AdminSiteBuilder() {
   
   const [siteData, setSiteData] = useState<SiteData>({
     logo_url: null,
+    logo_alt_url: null,
     favicon_url: null,
     hero_image_url: null,
     hero_title: null,
     hero_subtitle: null,
     about_text: null,
     about_image_url: null,
+    show_partnerships: true,
     primary_color: '#0f172a',
     secondary_color: '#3b82f6',
     contact: { email: null, phone: null, address: null },
@@ -320,7 +322,7 @@ export default function AdminSiteBuilder() {
               <p className="text-sm text-slate-500 dark:text-slate-400">Defina as cores e logos da sua marca.</p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <ImageUploader
                 label="Logo Principal"
                 currentUrl={siteData.logo_url}
@@ -328,6 +330,15 @@ export default function AdminSiteBuilder() {
                 assetType="logo"
                 companyId={user?.company_id || ''}
                 aspectRatio="aspect-[3/1]"
+              />
+
+              <ImageUploader
+                label="Logo Símbolo (Rolagem)"
+                currentUrl={siteData.logo_alt_url || null}
+                onUpload={(url) => updateSiteData({ logo_alt_url: url })}
+                assetType="logo_alt"
+                companyId={user?.company_id || ''}
+                aspectRatio="aspect-square"
               />
 
               <ImageUploader
@@ -387,6 +398,26 @@ export default function AdminSiteBuilder() {
                     <p className="text-xs text-slate-500 mt-1">Cor de destaque e botões</p>
                   </div>
                 </div>
+              </div>
+            </div>
+
+            {/* NOVO: Controle de Seções */}
+            <div className="pt-6 border-t border-slate-200 dark:border-slate-700">
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4">Seções do Site</h3>
+              <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-700">
+                <div>
+                  <p className="font-bold text-slate-800 dark:text-slate-200">Exibir Seção de Parcerias</p>
+                  <p className="text-sm text-slate-500">Mostra o carrossel contínuo de logomarcas na página inicial.</p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer hover:scale-105 transition-transform">
+                  <input
+                    type="checkbox"
+                    className="sr-only peer"
+                    checked={siteData.show_partnerships !== false}
+                    onChange={(e) => updateSiteData({ show_partnerships: e.target.checked })}
+                  />
+                  <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-brand-300 dark:peer-focus:ring-brand-800 rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-500"></div>
+                </label>
               </div>
             </div>
           </div>
