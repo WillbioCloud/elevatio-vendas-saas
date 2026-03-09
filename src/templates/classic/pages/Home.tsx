@@ -212,7 +212,7 @@ const Home: React.FC = () => {
               {featuredProperties.map((property) => (
                 <div 
                   key={property.id}
-                  onClick={() => navigate(`/imovel/${property.slug}`)}
+                  onClick={() => navigate(`/imoveis/${property.slug}`)}
                   className="group cursor-pointer"
                 >
                   {/* Image Container */}
@@ -302,7 +302,7 @@ const Home: React.FC = () => {
             {featuredProperties.slice(0, 2).map((property) => (
               <div 
                 key={property.id}
-                onClick={() => navigate(`/imovel/${property.slug}`)}
+                onClick={() => navigate(`/imoveis/${property.slug}`)}
                 className="group cursor-pointer"
               >
                 <div className="relative aspect-[16/10] rounded-2xl overflow-hidden mb-4 bg-gray-100">

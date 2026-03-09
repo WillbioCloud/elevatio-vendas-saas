@@ -242,7 +242,7 @@ const Properties: React.FC = () => {
             {properties.map(property => (
               <div 
                 key={property.id}
-                onClick={() => navigate(`/imovel/${property.slug}`)}
+                onClick={() => navigate(`/imoveis/${property.slug}`)}
                 className="group cursor-pointer"
               >
                 {/* Image Container */}

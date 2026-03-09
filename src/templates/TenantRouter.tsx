@@ -63,7 +63,7 @@ export default function TenantRouter() {
         
         {/* Páginas internas */}
         <Route path="imoveis" element={<Properties />} />
-        <Route path="imoveis/:id" element={<PropertyDetail />} />
+        <Route path="imoveis/:slug" element={<PropertyDetail />} />
         <Route path="sobre" element={<About />} />
         <Route path="servicos" element={<Services />} />
       </Route>

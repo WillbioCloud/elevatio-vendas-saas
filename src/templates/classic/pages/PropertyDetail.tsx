@@ -7,7 +7,7 @@ import { supabase } from '../../../lib/supabase';
 import { ArrowLeft, ArrowRight, X, MapPin, CheckCircle, MessageCircle, Loader2 } from 'lucide-react';
 
 const PropertyDetail: React.FC = () => {
-  const { id } = useParams<{ id: string }>();
+  const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
   const { tenant } = useTenant();
   const [property, setProperty] = useState<Property | null>(null);
@@ -31,7 +31,7 @@ const PropertyDetail: React.FC = () => {
     let isMounted = true;
 
     async function fetchProperty() {
-      if (!id || !tenant?.id) {
+      if (!slug || !tenant?.id) {
         if (isMounted) setLoading(false);
         return;
       }
@@ -39,24 +39,23 @@ const PropertyDetail: React.FC = () => {
       setLoading(true);
 
       try {
-        const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
-
-        let query = supabase
+        const { data, error } = await supabase
           .from('properties')
           .select('*, profiles(*)')
-          .eq('company_id', tenant.id);
-
-        if (isUUID) {
-          query = query.eq('id', id);
-        } else {
-          query = query.eq('slug', id);
-        }
-
-        const { data, error } = await query.single();
+          .eq('company_id', tenant.id)
+          .eq('slug', slug)
+          .maybeSingle();
 
         if (error) {
           console.error('Erro do Supabase:', error);
-          throw error;
+          if (isMounted) setLoading(false);
+          return;
+        }
+
+        if (!data) {
+          // Imóvel não encontrado
+          if (isMounted) setLoading(false);
+          return;
         }
 
         if (isMounted && data) {
@@ -110,7 +109,7 @@ const PropertyDetail: React.FC = () => {
     return () => {
       isMounted = false;
     };
-  }, [id, tenant?.id]);
+  }, [slug, tenant?.id]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
