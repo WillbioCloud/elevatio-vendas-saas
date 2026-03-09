@@ -12,7 +12,7 @@ import ProductTour from './ProductTour';
 import SetupWizardModal from './SetupWizardModal';
 
 const AdminLayout: React.FC = () => {
-  const { user, signOut } = useAuth();
+  const { user, signOut, refreshUser } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
@@ -50,7 +50,7 @@ const AdminLayout: React.FC = () => {
     try {
       const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 3000));
 
-      await Promise.race([supabase.auth.refreshSession(), timeoutPromise]);
+      await Promise.race([refreshUser(), timeoutPromise]);
       setRefreshKey((prev) => prev + 1);
     } catch (error) {
       console.warn('Conexão lenta. Recarregando a página para restaurar...', error);
@@ -84,9 +84,46 @@ const AdminLayout: React.FC = () => {
     }
   };
 
-  const handleExitToHome = async () => {
-    await signOut();
-    navigate('/');
+  const handleOpenWebsite = async (e: React.MouseEvent) => {
+    e.preventDefault();
+
+    if (!user?.company_id) {
+      alert('Empresa não identificada.');
+      return;
+    }
+
+    try {
+      // Busca a informação real da empresa direto do banco
+      const { data: company } = await supabase
+        .from('companies')
+        .select('domain, subdomain')
+        .eq('id', user.company_id)
+        .single();
+
+      if (company?.domain) {
+        const url = company.domain.startsWith('http') ? company.domain : `https://${company.domain}`;
+        window.open(url, '_blank');
+        return;
+      }
+
+      if (company?.subdomain) {
+        const hostname = window.location.hostname;
+        const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
+
+        if (isLocalhost) {
+          alert(`O seu site em produção ficará no endereço: https://${company.subdomain}.elevatiovendas.com`);
+        } else {
+          const baseDomain = hostname.replace(/^admin\./, '');
+          window.open(`https://${company.subdomain}.${baseDomain}`, '_blank');
+        }
+        return;
+      }
+
+      alert('Esta imobiliária ainda não possui um domínio ou subdomínio configurado. Vá em Configurações > Meu Site.');
+    } catch (error) {
+      console.error('Erro ao buscar dados do site:', error);
+      alert('Não foi possível abrir o site no momento.');
+    }
   };
 
   const menuItems = [
@@ -94,6 +131,7 @@ const AdminLayout: React.FC = () => {
     { label: 'Imóveis', path: '/admin/imoveis', icon: Icons.Building },
     { label: 'Tarefas', path: '/admin/tarefas', icon: Icons.Calendar },
     { label: 'Relatórios', path: '/admin/analytics', icon: Icons.PieChart, adminOnly: true },
+    { label: 'Site e Visual', path: '/admin/site', icon: Icons.Layout, adminOnly: true },
     { label: 'Configurações', path: '/admin/config', icon: Icons.Settings },
   ];
 
@@ -132,9 +170,9 @@ const AdminLayout: React.FC = () => {
           )}
           {!isSidebarCollapsed && (
             <button
-              onClick={handleExitToHome}
+              onClick={handleOpenWebsite}
               className="text-slate-400 hover:text-brand-400 transition-colors p-1 rounded-md hover:bg-slate-800 shrink-0"
-              title="Ir para o site (Sair)"
+              title="Abrir site da imobiliária"
             >
               <Icons.Globe size={20} />
             </button>
@@ -544,8 +582,8 @@ const AdminLayout: React.FC = () => {
               <div className="flex items-center justify-between px-4 mt-2">
                 <button
                   className="text-slate-400 hover:text-brand-400 transition-colors flex items-center justify-center p-2 rounded-md hover:bg-slate-100"
-                  onClick={handleExitToHome}
-                  title="Ir para o site público"
+                  onClick={handleOpenWebsite}
+                  title="Abrir site da imobiliária"
                 >
                   <Icons.Globe size={20} />
                 </button>

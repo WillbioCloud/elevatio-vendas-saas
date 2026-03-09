@@ -95,6 +95,18 @@ import {
   FileSignature,
   Camera,
   CreditCard,
+  Layout,
+  Link,
+  Gift,
+  Rocket,
+  Crown,
+  Building2,
+  Zap,
+  Package,
+  Edit2,
+  UserMinus,
+  BellOff,
+  Code,
 } from 'lucide-react';
 
 const Google = (props: ComponentPropsWithoutRef<'svg'>) => (
@@ -222,4 +234,17 @@ export const Icons = {
   FileSignature,
   Camera,
   CreditCard,
+  Layout,
+  Link,
+  Gift,
+  // NOVOS ÍCONES DO SAAS PLANS:
+  Rocket,
+  Crown,
+  Building2,
+  Zap,
+  Package,
+  Edit2,
+  UserMinus,
+  BellOff,
+  Code,
 };

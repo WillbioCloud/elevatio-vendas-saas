@@ -12,8 +12,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ allowInactive = false, 
   const { user, loading } = useAuth();
   const location = useLocation();
 
-  console.log('🚨 [DEBUG ProtectedRoute] Renderizou. Loading:', loading, '| User:', user?.email, '| Active:', user?.active);
-
+  // 1. Aguarda o carregamento da autenticação
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-dark-bg">
@@ -22,18 +21,21 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ allowInactive = false, 
     );
   }
 
+  // 2. Bloqueia se não estiver logado
   if (!user) {
-    console.log('🚨 [DEBUG ProtectedRoute] BLOQUEADO: Sem usuário. Redirecionando para /admin/login');
     return <Navigate to="/admin/login" replace />;
   }
 
-  // Se o utilizador está inativo e não é o super_admin, e AINDA NÃO ESTÁ na tela de pendente
-  if (!allowInactive && !user.active && location.pathname !== '/admin/pendente') {
-    console.log('🚨 [DEBUG ProtectedRoute] BLOQUEADO: Usuário inativo. Redirecionando para /admin/pendente');
-    return <Navigate to="/admin/pendente" replace />;
+  // Identifica se é um novo cliente SaaS que acabou de se cadastrar (ainda não tem empresa)
+  const isNewSaaSClient = !user.company_id && user.role !== 'super_admin';
+
+  // 3. Bloqueia se o corretor foi inativado pelo dono da imobiliária
+  if (!allowInactive && !user.active && !isNewSaaSClient && location.pathname !== '/admin/pendente') {
+    return <Navigate to="/admin/pendente" state={location.state} replace />;
   }
 
-  console.log('🚨 [DEBUG ProtectedRoute] ACESSO LIBERADO.');
+  // NOTA: A validação de Assinatura/Faturação (Trial, Pending, Inadimplente)
+  // agora é tratada globalmente e de forma centralizada pelo SessionManager.tsx
   return children ? <>{children}</> : <Outlet />;
 };
 
