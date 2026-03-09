@@ -4,7 +4,7 @@ import { useTenant } from '../../../contexts/TenantContext';
 import Loading from '../../../components/Loading';
 import { Property } from '../../../types';
 import { supabase } from '../../../lib/supabase';
-import { ArrowLeft, ArrowRight, X, MapPin, CheckCircle, MessageCircle, Loader2 } from 'lucide-react';
+import { ArrowLeft, Home, ArrowRight, X, MapPin, CheckCircle, MessageCircle, Loader2, Maximize, Maximize2, Bed, Bath, Car } from 'lucide-react';
 
 const PropertyDetail: React.FC = () => {
   const { slug } = useParams<{ slug: string }>();
@@ -241,7 +241,7 @@ const PropertyDetail: React.FC = () => {
       )}
 
       {/* CABEÇALHO */}
-      <div className="bg-white pt-8 pb-4">
+      <div className="bg-white pt-28 md:pt-32 pb-4 shadow-sm relative z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-gray-500 hover:text-gray-900 mb-6 font-semibold">
             <ArrowLeft size={18} /> Voltar
@@ -278,6 +278,18 @@ const PropertyDetail: React.FC = () => {
               >
                 {isRent ? 'Aluguel' : 'Venda'}
               </span>
+              {property.built_area && (
+                  <span className="flex items-center gap-1.5 bg-slate-900/80 backdrop-blur-md px-4 py-2 rounded-full text-sm font-bold shadow-sm uppercase tracking-wider text-white">
+                    <Home size={14} className="text-slate-300" />
+                    {property.built_area} m² Const.
+                  </span>
+                )}
+              {(property.suites || 0) > 0 && (
+                  <span className="flex items-center gap-1.5 bg-slate-900/80 backdrop-blur-md px-4 py-2 rounded-full text-sm font-bold shadow-sm uppercase tracking-wider text-white">
+                    <Bed size={14} className="text-slate-300" />
+                    {property.suites} Suítes
+                  </span>
+                )}
             </div>
           </div>
 
@@ -302,24 +314,36 @@ const PropertyDetail: React.FC = () => {
           
           <div className="lg:col-span-8 space-y-12">
             
-            {/* Cards de Métricas */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pb-8 border-b">
-              <div className="p-4 bg-white rounded-3xl shadow-sm border">
-                <span className="block text-xl font-bold">{property?.area || 0} m²</span>
-                <span className="text-xs text-gray-500">ÁREA</span>
-              </div>
-              <div className="p-4 bg-white rounded-3xl shadow-sm border">
-                <span className="block text-xl font-bold">{property?.bedrooms || 0}</span>
-                <span className="text-xs text-gray-500">QUARTOS</span>
-              </div>
-              <div className="p-4 bg-white rounded-3xl shadow-sm border">
-                <span className="block text-xl font-bold">{property?.bathrooms || 0}</span>
-                <span className="text-xs text-gray-500">BANHEIROS</span>
-              </div>
-              <div className="p-4 bg-white rounded-3xl shadow-sm border">
-                <span className="block text-xl font-bold">{property?.garage || 0}</span>
-                <span className="text-xs text-gray-500">VAGAS</span>
-              </div>
+            {/* Cards de Métricas (Design Clean) */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 border-b border-slate-200 dark:border-slate-700 pb-8">
+                <div className="px-4 md:px-6 py-4 bg-white dark:bg-slate-800 rounded-3xl shadow-xl border border-slate-200 dark:border-slate-700 flex items-center gap-3">
+                  <Maximize size={24} className="text-slate-400" />
+                  <div>
+                    <span className="block text-xl font-bold text-slate-900 dark:text-white">{property.area} m²</span>
+                    <span className="text-xs text-slate-500 font-medium uppercase">Área Útil</span>
+                  </div>
+                </div>
+                <div className="px-4 md:px-6 py-4 bg-white dark:bg-slate-800 rounded-3xl shadow-xl border border-slate-200 dark:border-slate-700 flex items-center gap-3">
+                  <Bed size={24} className="text-slate-400" />
+                  <div>
+                    <span className="block text-xl font-bold text-slate-900 dark:text-white">{property.bedrooms}</span>
+                    <span className="text-xs text-slate-500 font-medium uppercase">Quartos</span>
+                  </div>
+                </div>
+                <div className="px-4 md:px-6 py-4 bg-white dark:bg-slate-800 rounded-3xl shadow-xl border border-slate-200 dark:border-slate-700 flex items-center gap-3">
+                  <Bath size={24} className="text-slate-400" />
+                  <div>
+                    <span className="block text-xl font-bold text-slate-900 dark:text-white">{property.bathrooms}</span>
+                    <span className="text-xs text-slate-500 font-medium uppercase">Banheiros</span>
+                  </div>
+                </div>
+                <div className="px-4 md:px-6 py-4 bg-white dark:bg-slate-800 rounded-3xl shadow-xl border border-slate-200 dark:border-slate-700 flex items-center gap-3">
+                  <Car size={24} className="text-slate-400" />
+                  <div>
+                    <span className="block text-xl font-bold text-slate-900 dark:text-white">{property.garage}</span>
+                    <span className="text-xs text-slate-500 font-medium uppercase">Vagas</span>
+                  </div>
+                </div>
             </div>
 
             {/* Descrição */}
@@ -349,7 +373,7 @@ const PropertyDetail: React.FC = () => {
           </div>
 
           <div className="lg:col-span-4">
-            <div className="lg:sticky lg:top-8 bg-white p-8 rounded-3xl shadow-xl border">
+            <div className="lg:sticky lg:top-20 bg-white p-8 rounded-3xl shadow-xl border">
               <h2 className="text-4xl font-bold text-gray-900 mb-6">
                 {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(property?.price || 0)}
               </h2>
