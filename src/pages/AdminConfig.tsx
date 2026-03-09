@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { Icons } from '../components/Icons';
 import { useAuth } from '../contexts/AuthContext';
 import GamificationModal from '../components/GamificationModal';
+import { PLANS } from '../config/plans';
 
 interface Profile {
   id: string;
@@ -22,10 +23,16 @@ interface Profile {
 
 interface Contract {
   id: string;
-  plan_name: string;
+  plan_name?: string;
+  plan?: string;
+  plan_id?: string;
   status: string;
   start_date: string;
   end_date: string;
+  billing_cycle?: string;
+  has_fidelity?: boolean;
+  fidelity_end_date?: string;
+  companies?: { plan?: string };
 }
 
 const compressAvatar = (file: File | Blob, maxSize = 512): Promise<Blob> => {
@@ -96,7 +103,7 @@ const AdminConfig: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const isAdmin = user?.role === 'admin';
 
-  const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'team' | 'traffic' | 'subscription'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'team' | 'traffic' | 'subscription' | 'site'>('profile');
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [distRules, setDistRules] = useState<{ enabled: boolean; types: string[] }>({ enabled: false, types: [] });
   const [profileForm, setProfileForm] = useState({ name: '', phone: '', email: '' });
@@ -111,9 +118,22 @@ const AdminConfig: React.FC = () => {
   const [contract, setContract] = useState<Contract | null>(null);
   const [loadingContract, setLoadingContract] = useState(false);
   const [isGeneratingCheckout, setIsGeneratingCheckout] = useState(false);
+  const [isReactivating, setIsReactivating] = useState(false);
+  const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
+  const [acceptFidelity, setAcceptFidelity] = useState(false);
+  const [isUpgrading, setIsUpgrading] = useState<string | null>(null);
+  const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  const [otherReason, setOtherReason] = useState('');
+  const [isCanceling, setIsCanceling] = useState(false);
+  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
+  const [siteTemplate, setSiteTemplate] = useState('classic');
+  const [siteDomain, setSiteDomain] = useState('');
+  const [isSavingSite, setIsSavingSite] = useState(false);
+  const [isOpeningPortal, setIsOpeningPortal] = useState(false);
 
   const fetchSettings = async () => {
-    const { data } = await supabase.from('settings').select('*').eq('id', 1).single();
+    const { data } = await supabase.from('settings').select('*').eq('id', 1).maybeSingle();
     if (data) {
       setSiteSettings({
         route_to_central: data.route_to_central ?? true,
@@ -127,13 +147,29 @@ const AdminConfig: React.FC = () => {
     setLoadingContract(true);
     const { data } = await supabase
       .from('saas_contracts')
-      .select('*')
+      .select('*, companies(plan)')
+      .eq('company_id', user?.company_id)
       .order('created_at', { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
 
     setContract(data as Contract | null);
     setLoadingContract(false);
+  };
+
+  const fetchCompanyData = async () => {
+    if (!user?.company_id) return;
+    
+    const { data } = await supabase
+      .from('companies')
+      .select('template, domain')
+      .eq('id', user.company_id)
+      .maybeSingle();
+    
+    if (data) {
+      setSiteTemplate(data.template || 'classic');
+      setSiteDomain(data.domain || '');
+    }
   };
 
   useEffect(() => {
@@ -141,6 +177,7 @@ const AdminConfig: React.FC = () => {
       fetchProfiles();
       fetchSettings();
       fetchContract();
+      fetchCompanyData();
     }
   }, [isAdmin, user?.id]);
 
@@ -363,44 +400,161 @@ const AdminConfig: React.FC = () => {
 
     setIsGeneratingCheckout(true);
     try {
-      // 1. Pegamos a sessão e as chaves de ambiente
-      const { data: { session } } = await supabase.auth.getSession();
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      console.log("🚀 Buscando link de pagamento...");
 
-      console.log("🚀 Enviando requisição direta para a Edge Function...");
-
-      // 2. Chamada Direta e à prova de falhas (Ignora os bugs do supabase-js)
-      const response = await fetch(`${supabaseUrl}/functions/v1/create-asaas-checkout`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session?.access_token}`,
-          'apikey': supabaseKey
-        },
-        body: JSON.stringify({ company_id: companyId })
+      const { data, error } = await supabase.functions.invoke('get-asaas-payment-link', {
+        body: { company_id: companyId }
       });
 
-      // 3. Lemos a resposta REAL do servidor
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || `Erro HTTP ${response.status}`);
+      if (error) {
+        throw new Error(error.message);
       }
 
       if (!data?.checkoutUrl) {
-        throw new Error('O Asaas não retornou o link. Verifique os logs da Edge Function.');
+        throw new Error(data?.error || 'Link não retornado pelo Asaas.');
       }
 
-      // 4. Redirecionamento com Sucesso!
-      console.log("✅ Link gerado com sucesso! Redirecionando...");
+      console.log("✅ Link encontrado! Redirecionando...");
       window.location.href = data.checkoutUrl;
 
     } catch (error: any) {
       console.error("🔥 ERRO FATAL:", error);
-      alert('Erro ao gerar pagamento: ' + (error.message || error));
+      alert('Erro ao buscar pagamento: ' + (error.message || error));
     } finally {
       setIsGeneratingCheckout(false);
+    }
+  };
+
+  const handleOpenPortal = async () => {
+    setIsOpeningPortal(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('get-asaas-portal-link', {
+        body: { company_id: user?.company_id }
+      });
+
+      if (error) throw new Error(error.message);
+      if (data?.error) throw new Error(data.error);
+
+      if (data?.portalUrl) {
+        window.open(data.portalUrl, '_blank');
+      } else {
+        alert('Não foi possível gerar o link de acesso no momento.');
+      }
+    } catch (error: any) {
+      alert('Erro ao acessar portal: ' + error.message);
+    } finally {
+      setIsOpeningPortal(false);
+    }
+  };
+
+  const handleReactivate = async (plan: any) => {
+    setIsReactivating(true);
+    try {
+      const priceToPay = billingCycle === 'monthly' ? plan.priceMensal : plan.priceAnual;
+
+      const { data, error } = await supabase.functions.invoke('reactivate-asaas-subscription', {
+        body: { 
+          company_id: user?.company_id,
+          plan_name: plan.id,
+          billing_cycle: billingCycle,
+          price: priceToPay
+        }
+      });
+
+      if (error) throw new Error(error.message);
+      if (data?.error) throw new Error(data.error);
+
+      if (data.checkoutUrl) {
+        window.location.href = data.checkoutUrl;
+      } else {
+        alert('Assinatura reativada, mas o link de pagamento não foi encontrado.');
+      }
+    } catch (error: any) {
+      alert('Erro ao reativar: ' + error.message);
+    } finally {
+      setIsReactivating(false);
+    }
+  };
+
+  const handleUpgrade = async (planId: string) => {
+    setIsUpgrading(planId);
+    try {
+      if (!user?.company_id) throw new Error("ID da empresa não encontrado.");
+
+      const { data, error } = await supabase.functions.invoke('update-asaas-subscription', {
+        body: { 
+          company_id: user.company_id, 
+          new_plan: planId,
+          billing_cycle: billingCycle,
+          has_fidelity: acceptFidelity
+        }
+      });
+
+      if (error) throw new Error(error.message);
+      if (data?.error) throw new Error(data.error);
+
+      alert(`Sucesso! Sua assinatura foi atualizada para o plano ${planId.toUpperCase()}.`);
+      await fetchContract(); // Recarrega o contrato para atualizar o card na tela
+    } catch (error: any) {
+      console.error(error);
+      alert('Erro ao atualizar plano: ' + (error.message || 'Tente novamente mais tarde.'));
+    } finally {
+      setIsUpgrading(null);
+    }
+  };
+
+  const handleCancelSubscription = async () => {
+    if (!cancelReason) return alert('Por favor, selecione um motivo.');
+    if (cancelReason === 'Outro' && !otherReason) return alert('Por favor, descreva o motivo.');
+
+    setIsCanceling(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('cancel-asaas-subscription', {
+        body: { 
+          company_id: user?.company_id, 
+          reason: cancelReason, 
+          other_reason: otherReason 
+        }
+      });
+
+      if (error) throw new Error(error.message);
+      if (data?.error) throw new Error(data.error);
+
+      alert('Assinatura cancelada com sucesso. Você terá acesso até o final do período pago.');
+      setIsCancelModalOpen(false);
+      await fetchContract();
+    } catch (error: any) {
+      alert('Erro ao cancelar: ' + error.message);
+    } finally {
+      setIsCanceling(false);
+    }
+  };
+
+  const handleSaveSiteConfig = async () => {
+    setIsSavingSite(true);
+    try {
+      if (!user?.company_id) throw new Error("ID da empresa não encontrado.");
+
+      // Limpa o domínio caso o usuário digite com http ou www
+      const cleanDomain = siteDomain.replace(/^(https?:\/\/)?(www\.)?/, '').trim();
+      const finalDomain = cleanDomain === '' ? null : cleanDomain;
+
+      const { error } = await supabase
+        .from('companies')
+        .update({ 
+          template: siteTemplate,
+          domain: finalDomain
+        })
+        .eq('id', user.company_id);
+
+      if (error) throw error;
+
+      setSiteDomain(cleanDomain);
+      alert('Configurações do site salvas com sucesso!');
+    } catch (error: any) {
+      alert('Erro ao salvar configurações: ' + error.message);
+    } finally {
+      setIsSavingSite(false);
     }
   };
 
@@ -418,6 +572,12 @@ const AdminConfig: React.FC = () => {
 
   const pendingProfiles = useMemo(() => profiles.filter((profile) => !profile.active), [profiles]);
   const activeProfiles = useMemo(() => profiles.filter((profile) => profile.active), [profiles]);
+
+  const rawPlan = contract?.plan_name || contract?.plan || contract?.companies?.plan || '';
+  const activePlanId = rawPlan.toLowerCase();
+  const currentPlanIndex = PLANS.findIndex(p => p.id === activePlanId);
+  const currentPlanDetails = currentPlanIndex !== -1 ? PLANS[currentPlanIndex] : null;
+  const displayPlanName = currentPlanDetails?.name || (rawPlan ? rawPlan.toUpperCase() : 'PLANO PADRÃO');
 
   const toggleSound = () => {
     const newValue = !soundEnabled;
@@ -476,6 +636,15 @@ const AdminConfig: React.FC = () => {
             className={`pb-4 px-2 text-sm font-bold transition-colors border-b-2 flex items-center gap-2 whitespace-nowrap ${activeTab === 'subscription' ? 'border-brand-500 text-brand-600 dark:text-brand-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
           >
             <Icons.CreditCard size={18} /> Assinatura
+          </button>
+        )}
+
+        {isAdmin && (
+          <button
+            onClick={() => setActiveTab('site')}
+            className={`pb-4 px-2 text-sm font-bold transition-colors border-b-2 flex items-center gap-2 whitespace-nowrap ${activeTab === 'site' ? 'border-brand-500 text-brand-600 dark:text-brand-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
+          >
+            <Icons.Globe size={18} /> Meu Site
           </button>
         )}
       </div>
@@ -872,75 +1041,266 @@ const AdminConfig: React.FC = () => {
       )}
 
       {activeTab === 'subscription' && isAdmin && (
-        <div className="space-y-6">
-          <div>
-            <h3 className="text-lg font-bold text-slate-800 dark:text-white">Meu Plano</h3>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-              Consulte o status da sua assinatura e acesse as opções de pagamento.
-            </p>
+        <div className="space-y-8 animate-fade-in">
+          {/* Cabeçalho da Assinatura */}
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+            <div>
+              <h3 className="text-2xl font-serif font-bold text-slate-800 dark:text-white">Sua Assinatura</h3>
+              <p className="text-slate-500 dark:text-slate-400 mt-1">
+                Gerencie seu plano, faturas e métodos de pagamento.
+              </p>
+            </div>
+            <div className="bg-slate-100 dark:bg-slate-800 p-1 rounded-xl flex items-center w-fit">
+              <button
+                onClick={() => setBillingCycle('monthly')}
+                className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${
+                  billingCycle === 'monthly'
+                    ? 'bg-white dark:bg-slate-700 text-slate-800 dark:text-white shadow-sm'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-700'
+                }`}
+              >
+                Mensal
+              </button>
+              <button
+                onClick={() => setBillingCycle('yearly')}
+                className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${
+                  billingCycle === 'yearly'
+                    ? 'bg-white dark:bg-slate-700 text-slate-800 dark:text-white shadow-sm'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-700'
+                }`}
+              >
+                Anual
+                <span className="bg-brand-100 text-brand-700 text-[10px] px-1.5 py-0.5 rounded-md">-20%</span>
+              </button>
+            </div>
+
+            {/* Checkbox de Fidelidade para o plano Mensal */}
+            {billingCycle === 'monthly' && (
+              <label className="flex items-center gap-2 mt-4 cursor-pointer bg-brand-50 dark:bg-brand-900/20 border border-brand-200 dark:border-brand-800 p-3 rounded-xl w-fit transition-colors hover:bg-brand-100 dark:hover:bg-brand-900/40">
+                <input
+                  type="checkbox"
+                  checked={acceptFidelity}
+                  onChange={(e) => setAcceptFidelity(e.target.checked)}
+                  className="w-4 h-4 text-brand-600 rounded focus:ring-brand-500 cursor-pointer"
+                />
+                <span className="text-sm font-medium text-brand-900 dark:text-brand-100">
+                  Aceito o contrato de fidelidade (12 meses) para ganhar <strong className="text-brand-600 dark:text-brand-400">20% de desconto</strong>
+                </span>
+              </label>
+            )}
           </div>
 
           {loadingContract ? (
-            <div className="bg-white dark:bg-dark-card rounded-2xl border border-gray-200 dark:border-dark-border p-6">
-              <p className="text-sm text-slate-500 dark:text-slate-400">Carregando detalhes do plano...</p>
+            <div className="bg-white dark:bg-dark-card rounded-2xl border border-gray-200 dark:border-dark-border p-8 flex justify-center items-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-500"></div>
             </div>
           ) : contract ? (
-            <div className="bg-white dark:bg-dark-card rounded-2xl border border-gray-200 dark:border-dark-border p-6 md:p-8 space-y-6 shadow-sm">
-              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                <div>
-                  <p className="text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400 font-bold">Plano Atual</p>
-                  <h4 className="text-2xl font-bold text-slate-800 dark:text-white mt-1">{contract.plan_name}</h4>
-                </div>
+            <>
+              {/* Card do Plano Atual */}
+              <div className="bg-gradient-to-br from-brand-900 to-slate-900 rounded-3xl p-1 shadow-xl">
+                <div className="bg-white/10 backdrop-blur-md rounded-[22px] p-6 md:p-8 flex flex-col md:flex-row items-center justify-between gap-8">
+                  <div className="text-white w-full md:w-auto">
+                    <div className="flex items-center gap-3 mb-2">
+                      <span className="bg-brand-500/20 text-brand-200 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider border border-brand-400/30">
+                        Plano Atual
+                      </span>
+                      <span
+                        className={`flex items-center gap-1.5 text-xs font-bold ${
+                          contract.status === 'active'
+                            ? 'text-emerald-400'
+                            : contract.status === 'pending'
+                              ? 'text-blue-400'
+                              : contract.status === 'canceled'
+                                ? 'text-amber-400'
+                                : 'text-red-400'
+                        }`}
+                      >
+                        <span
+                          className={`w-2 h-2 rounded-full ${
+                            contract.status === 'active'
+                              ? 'bg-emerald-400'
+                              : contract.status === 'pending'
+                                ? 'bg-blue-400'
+                                : contract.status === 'canceled'
+                                  ? 'bg-amber-400'
+                                  : 'bg-red-400'
+                          }`}
+                        ></span>
+                        {contract.status === 'active'
+                          ? 'Ativo'
+                          : contract.status === 'pending'
+                            ? 'Aguardando Pagamento'
+                            : contract.status === 'canceled'
+                              ? `Cancela em ${new Date(contract.end_date).toLocaleDateString('pt-BR')}`
+                              : contract ? 'Inativo' : 'Erro: Contrato não gerado'}
+                      </span>
+                    </div>
+                    <h2 className="text-4xl font-serif font-bold uppercase tracking-tight">{displayPlanName}</h2>
+                    <div className="flex items-center gap-6 mt-6 opacity-80 text-sm">
+                      <div>
+                        <p className="text-brand-300 text-xs uppercase mb-0.5">Renovação em</p>
+                        <p className="font-medium">{new Date(contract.end_date).toLocaleDateString('pt-BR')}</p>
+                      </div>
+                      <div className="w-px h-8 bg-white/20"></div>
+                      <div>
+                        <p className="text-brand-300 text-xs uppercase mb-0.5">Ciclo Atual</p>
+                        <p className="font-medium">{contract.billing_cycle === 'yearly' ? 'Anual' : 'Mensal'}</p>
+                      </div>
+                    </div>
+                  </div>
+                  {/* Ações da Assinatura */}
+                  <div className="w-full md:w-auto flex flex-col gap-3 min-w-[240px]">
+                    {(contract?.status === 'trial' || contract?.status === 'past_due' || contract?.status === 'canceled' || contract?.status === 'pending') && (
+                      <button
+                        onClick={() => {
+                          if (contract?.status === 'canceled') {
+                            const currentPlanData = PLANS.find(p => p.id === contract.plan_name) || PLANS[0];
+                            handleReactivate(currentPlanData);
+                          } else {
+                            handleCheckout();
+                          }
+                        }}
+                        disabled={isGeneratingCheckout || isReactivating}
+                        className={`w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all ${
+                          contract?.status === 'past_due'
+                            ? 'bg-red-500 hover:bg-red-600 text-white shadow-lg shadow-red-500/20'
+                            : contract?.status === 'canceled'
+                            ? 'bg-amber-500 hover:bg-amber-600 text-white shadow-lg shadow-amber-500/20'
+                            : 'bg-brand-600 hover:bg-brand-700 text-white shadow-lg shadow-brand-500/20'
+                        }`}
+                      >
+                        {(isGeneratingCheckout || isReactivating) ? (
+                          <Icons.RefreshCw size={20} className="animate-spin" />
+                        ) : (
+                          <Icons.CreditCard size={20} />
+                        )}
+                        {(isGeneratingCheckout || isReactivating)
+                          ? 'Processando...'
+                          : contract?.status === 'past_due'
+                          ? 'Regularizar Pagamento'
+                          : contract?.status === 'canceled'
+                          ? 'Reativar Assinatura'
+                          : 'Assinar Agora'}
+                      </button>
+                    )}
 
-                <span
-                  className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold ${
-                    contract.status === 'active'
-                      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
-                      : contract.status === 'pending'
-                        ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
-                        : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
-                  }`}
-                >
-                  {contract.status === 'active'
-                    ? 'Ativo'
-                    : contract.status === 'pending'
-                      ? 'Aguardando Pagamento'
-                      : 'Expirado'}
-                </span>
+                    {contract?.status === 'active' && (
+                      <>
+                        <button
+                          onClick={handleOpenPortal}
+                          disabled={isOpeningPortal}
+                          className="w-full bg-slate-100 hover:bg-slate-200 dark:bg-white/5 dark:hover:bg-white/10 text-slate-700 dark:text-white py-3 rounded-xl font-bold transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                        >
+                          {isOpeningPortal ? (
+                            <Icons.RefreshCw size={20} className="animate-spin" />
+                          ) : (
+                            <Icons.CreditCard size={20} />
+                          )}
+                          {isOpeningPortal ? 'Acessando...' : 'Faturas e Cartão'}
+                        </button>
+
+                        <button
+                          onClick={() => setIsCancelModalOpen(true)}
+                          className="w-full bg-transparent hover:bg-red-50 dark:hover:bg-red-500/10 text-slate-500 hover:text-red-500 py-3 rounded-xl font-bold transition-colors"
+                        >
+                          Cancelar Assinatura
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="rounded-xl border border-slate-200 dark:border-dark-border p-4 bg-slate-50 dark:bg-dark-bg">
-                  <p className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Início</p>
-                  <p className="text-base font-semibold text-slate-800 dark:text-white mt-1">
-                    {new Date(contract.start_date).toLocaleDateString('pt-BR')}
-                  </p>
-                </div>
-                <div className="rounded-xl border border-slate-200 dark:border-dark-border p-4 bg-slate-50 dark:bg-dark-bg">
-                  <p className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Vencimento</p>
-                  <p className="text-base font-semibold text-slate-800 dark:text-white mt-1">
-                    {new Date(contract.end_date).toLocaleDateString('pt-BR')}
-                  </p>
+              {/* Grade de Upgrades */}
+              <div>
+                <h4 className="text-lg font-bold text-slate-800 dark:text-white mb-6">Opções de Upgrade</h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {PLANS.filter((plan) => {
+                    const isCurrentPlan = plan.id === activePlanId;
+                    const isCurrentCycle = contract?.billing_cycle === billingCycle;
+                    // SÓ esconde se for o mesmo plano E o mesmo ciclo que ele já paga
+                    return !(isCurrentPlan && isCurrentCycle);
+                  }).map((plan) => {
+                    const planIndex = PLANS.findIndex(p => p.id === plan.id);
+                    const isDowngrade = currentPlanIndex !== -1 && planIndex < currentPlanIndex;
+                    
+                    // Verifica se é mudança de ciclo no mesmo plano
+                    const isCycleUpgrade = plan.id === activePlanId && contract?.billing_cycle === 'monthly' && billingCycle === 'yearly';
+                    const isCycleDowngrade = plan.id === activePlanId && contract?.billing_cycle === 'yearly' && billingCycle === 'monthly';
+                    
+                    return (
+                      <div
+                        key={plan.id}
+                        className="bg-white dark:bg-dark-card rounded-2xl border border-slate-200 dark:border-dark-border p-6 flex flex-col h-full hover:border-brand-300 dark:hover:border-brand-700 transition-colors"
+                      >
+                        <div className="mb-4">
+                          <h5 className="text-xl font-bold text-slate-800 dark:text-white uppercase">{plan.name}</h5>
+                          <p className="text-sm text-slate-500 mt-1 line-clamp-2">{plan.description}</p>
+                        </div>
+                        <div className="mb-6 flex flex-col">
+                          <div className="flex items-baseline gap-1">
+                            <span className="text-3xl font-bold text-slate-900 dark:text-white">
+                              R${' '}
+                              {billingCycle === 'monthly'
+                                ? (acceptFidelity ? plan.priceMensal * 0.8 : plan.priceMensal).toFixed(2).replace('.', ',')
+                                : plan.priceAnual.toFixed(2).replace('.', ',')}
+                            </span>
+                            <span className="text-sm text-slate-500">/mês</span>
+                          </div>
+                          <div className="h-4 mt-1">
+                            {billingCycle === 'yearly' && (
+                              <span className="text-xs text-brand-600 dark:text-brand-400 font-medium">
+                                Faturado R$ {(plan.priceAnual * 12).toFixed(2).replace('.', ',')} / ano
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <ul className="space-y-3 mb-8 flex-grow">
+                          {plan.features.slice(0, 4).map((feature, i) => (
+                            <li key={i} className="flex items-start gap-2 text-sm text-slate-600 dark:text-slate-300">
+                              <Icons.Check size={16} className="text-brand-500 shrink-0 mt-0.5" />
+                              <span>{feature}</span>
+                            </li>
+                          ))}
+                          {plan.features.length > 4 && (
+                            <li className="text-xs text-brand-600 font-medium pl-6">
+                              + {plan.features.length - 4} outras vantagens
+                            </li>
+                          )}
+                        </ul>
+                        <button
+                          onClick={() => {
+                            if (contract?.status === 'canceled' || contract?.status === 'expired') {
+                              handleReactivate(plan);
+                            } else {
+                              handleUpgrade(plan.id);
+                            }
+                          }}
+                          disabled={isUpgrading === plan.id || isGeneratingCheckout || isReactivating}
+                          className={`w-full py-2.5 rounded-xl font-bold transition-colors ${
+                            isDowngrade || isCycleDowngrade
+                              ? 'bg-slate-100 hover:bg-slate-200 text-slate-600 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-400'
+                              : 'bg-brand-50 hover:bg-brand-100 text-brand-700 dark:bg-brand-900/30 dark:hover:bg-brand-900/50 dark:text-brand-400'
+                          }`}
+                        >
+                          {(isUpgrading === plan.id || isReactivating)
+                            ? 'Processando...' 
+                            : (contract?.status === 'canceled' || contract?.status === 'expired')
+                              ? 'Reativar Assinatura'
+                              : isCycleUpgrade 
+                                ? 'Migrar para Anual' 
+                                : isCycleDowngrade 
+                                  ? 'Migrar para Mensal' 
+                                  : isDowngrade 
+                                    ? 'Fazer Downgrade' 
+                                    : 'Fazer Upgrade'}
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
-
-              {['pending', 'expired', 'canceled'].includes(contract.status) ? (
-                <button
-                  onClick={handleCheckout}
-                  disabled={isGeneratingCheckout}
-                  className="w-full bg-brand-600 hover:bg-brand-700 text-white py-3 rounded-xl font-bold transition-colors"
-                >
-                  {isGeneratingCheckout ? 'A gerar ambiente seguro...' : 'Pagar Assinatura'}
-                </button>
-              ) : (
-                <button
-                  onClick={() => alert('Redirecionar para Asaas')}
-                  className="w-full border border-brand-300 text-brand-600 dark:text-brand-400 dark:border-brand-700 py-3 rounded-xl font-bold hover:bg-brand-50 dark:hover:bg-brand-900/20 transition-colors"
-                >
-                  Gerenciar Assinatura (Faturas e Cartão)
-                </button>
-              )}
-            </div>
+            </>
           ) : (
             <div className="bg-white dark:bg-dark-card rounded-2xl border border-gray-200 dark:border-dark-border p-6">
               <p className="text-sm text-slate-500 dark:text-slate-400">
@@ -956,6 +1316,265 @@ const AdminConfig: React.FC = () => {
         onClose={() => setIsXpModalOpen(false)}
         xpPoints={Number(user?.xp_points || 0)}
       />
+
+      {/* Modal de Cancelamento */}
+      {isCancelModalOpen && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white dark:bg-dark-card w-full max-w-md rounded-2xl p-6 shadow-2xl">
+            <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-2">Cancelar Assinatura</h3>
+            
+            {contract?.has_fidelity && contract?.fidelity_end_date && new Date() < new Date(contract.fidelity_end_date) && (
+              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-4 rounded-xl mb-6">
+                <h4 className="text-red-800 dark:text-red-400 font-bold text-sm flex items-center gap-2 mb-1">
+                  <Icons.AlertTriangle size={16} />
+                  Aviso de Quebra de Contrato
+                </h4>
+                <p className="text-xs text-red-600 dark:text-red-300">
+                  Sua assinatura possui um contrato de fidelidade válido até <strong>{new Date(contract.fidelity_end_date).toLocaleDateString('pt-BR')}</strong>. Ao cancelar agora, será gerada uma fatura de multa rescisória (30% sobre o valor dos meses restantes) conforme os Termos de Uso.
+                </p>
+              </div>
+            )}
+
+            <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
+              Sentimos muito em ver você partir. Seu acesso continuará liberado até{' '}
+              <strong className="text-brand-500">
+                {new Date(contract?.end_date || '').toLocaleDateString('pt-BR')}
+              </strong>
+              . Conta pra gente, por que está cancelando?
+            </p>
+
+            <div className="space-y-3 mb-6">
+              {['Muito caro', 'Faltam recursos', 'Difícil de usar', 'Mudei de software', 'Outro'].map((reason) => (
+                <label
+                  key={reason}
+                  className="flex items-center gap-3 p-3 rounded-lg border border-slate-200 dark:border-white/10 cursor-pointer hover:bg-slate-50 dark:hover:bg-white/5 transition-colors"
+                >
+                  <input
+                    type="radio"
+                    name="cancel_reason"
+                    value={reason}
+                    checked={cancelReason === reason}
+                    onChange={(e) => setCancelReason(e.target.value)}
+                    className="w-4 h-4 text-brand-500 bg-transparent border-slate-300 focus:ring-brand-500"
+                  />
+                  <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{reason}</span>
+                </label>
+              ))}
+            </div>
+
+            {cancelReason === 'Outro' && (
+              <textarea
+                placeholder="Por favor, conte-nos mais (opcional)..."
+                value={otherReason}
+                onChange={(e) => setOtherReason(e.target.value)}
+                className="w-full bg-slate-50 dark:bg-[#111] border border-slate-200 dark:border-white/10 rounded-xl p-3 text-sm text-slate-800 dark:text-white outline-none focus:border-brand-500 mb-6 min-h-[80px] resize-none"
+              />
+            )}
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setIsCancelModalOpen(false)}
+                className="flex-1 py-3 rounded-xl font-bold text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 transition-colors"
+              >
+                Voltar
+              </button>
+              <button
+                onClick={handleCancelSubscription}
+                disabled={isCanceling || !cancelReason || (cancelReason === 'Outro' && !otherReason)}
+                className="flex-1 py-3 rounded-xl font-bold text-white bg-red-500 hover:bg-red-600 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+              >
+                {isCanceling ? (
+                  <>
+                    <Icons.RefreshCw size={18} className="animate-spin" /> Cancelando...
+                  </>
+                ) : (
+                  'Confirmar Cancelamento'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'site' && (
+        <div className="space-y-8 animate-fade-in">
+          {/* SEÇÃO 1: Escolha do Template */}
+          <div className="bg-white dark:bg-dark-card rounded-2xl border border-slate-200 dark:border-dark-border p-6 shadow-sm">
+            <div className="mb-6">
+              <h3 className="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                <Icons.Layout size={24} className="text-brand-500" />
+                Aparência do Site
+              </h3>
+              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                Escolha o design que melhor representa a sua imobiliária.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Opção Clássica */}
+              <div
+                onClick={() => setSiteTemplate('classic')}
+                className={`cursor-pointer rounded-xl border-2 transition-all overflow-hidden ${
+                  siteTemplate === 'classic'
+                    ? 'border-brand-500 ring-4 ring-brand-500/20'
+                    : 'border-slate-200 dark:border-slate-700 hover:border-brand-300'
+                }`}
+              >
+                <div className="h-40 bg-slate-100 dark:bg-slate-800 p-4 flex flex-col items-center justify-center border-b border-slate-200 dark:border-slate-700">
+                  <div className="w-full h-4 bg-white dark:bg-slate-700 rounded mb-2 shadow-sm"></div>
+                  <div className="w-full flex gap-2">
+                    <div className="w-1/3 h-16 bg-white dark:bg-slate-700 rounded shadow-sm"></div>
+                    <div className="w-1/3 h-16 bg-white dark:bg-slate-700 rounded shadow-sm"></div>
+                    <div className="w-1/3 h-16 bg-white dark:bg-slate-700 rounded shadow-sm"></div>
+                  </div>
+                </div>
+                <div className="p-4 bg-white dark:bg-dark-card">
+                  <div className="flex justify-between items-center mb-1">
+                    <h4 className="font-bold text-slate-800 dark:text-white">Classic</h4>
+                    {siteTemplate === 'classic' && <Icons.CheckCircle className="text-brand-500" size={20} />}
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    Design original, focado em alta conversão e simplicidade. Fundo claro.
+                  </p>
+                </div>
+              </div>
+
+              {/* Opção Luxo */}
+              <div
+                onClick={() => setSiteTemplate('luxury')}
+                className={`cursor-pointer rounded-xl border-2 transition-all overflow-hidden ${
+                  siteTemplate === 'luxury'
+                    ? 'border-brand-500 ring-4 ring-brand-500/20'
+                    : 'border-slate-200 dark:border-slate-700 hover:border-brand-300'
+                }`}
+              >
+                <div className="h-40 bg-slate-900 p-4 flex flex-col items-center justify-center border-b border-slate-800">
+                  <div className="w-3/4 h-8 bg-slate-800 rounded mb-4"></div>
+                  <div className="w-1/2 h-10 bg-brand-600 rounded"></div>
+                </div>
+                <div className="p-4 bg-white dark:bg-dark-card">
+                  <div className="flex justify-between items-center mb-1">
+                    <h4 className="font-bold text-slate-800 dark:text-white">Luxury</h4>
+                    {siteTemplate === 'luxury' && <Icons.CheckCircle className="text-brand-500" size={20} />}
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    Design premium em tons escuros. Ideal para imóveis de alto padrão e exclusividade.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* SEÇÃO 2: Domínio Customizado */}
+          <div className="bg-white dark:bg-dark-card rounded-2xl border border-slate-200 dark:border-dark-border p-6 shadow-sm">
+            <div className="mb-6">
+              <h3 className="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                <Icons.Globe size={24} className="text-brand-500" />
+                Domínio Próprio
+              </h3>
+              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                Conecte o seu domínio (ex: sua-imobiliaria.com.br) para remover a marca da Elevatio Vendas.
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
+                  Seu Domínio
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Icons.Link size={18} className="text-slate-400" />
+                  </div>
+                  <input
+                    type="text"
+                    value={siteDomain}
+                    onChange={(e) => setSiteDomain(e.target.value)}
+                    placeholder="minhaimobiliaria.com.br"
+                    className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-[#111] border border-slate-200 dark:border-white/10 rounded-xl text-sm focus:border-brand-500 focus:ring-brand-500 dark:text-white"
+                  />
+                </div>
+              </div>
+
+              <div className="bg-brand-50 dark:bg-brand-900/20 rounded-xl p-4 border border-brand-100 dark:border-brand-900/50">
+                <h4 className="text-sm font-bold text-brand-800 dark:text-brand-400 mb-2 flex items-center gap-2">
+                  <Icons.Info size={16} />
+                  Como configurar seu domínio:
+                </h4>
+                <ol className="list-decimal list-inside text-xs text-brand-700 dark:text-brand-300 space-y-1">
+                  <li>Acesse o painel onde comprou seu domínio (Registro.br, GoDaddy, etc).</li>
+                  <li>Vá na zona de DNS e crie um apontamento do tipo <strong>CNAME</strong>.</li>
+                  <li>No campo Nome, digite <strong>www</strong>.</li>
+                  <li>No campo Destino/Valor, digite <strong>cname.vercel-dns.com</strong>.</li>
+                  <li>Aguarde a propagação (pode levar até 24 horas).</li>
+                </ol>
+              </div>
+            </div>
+          </div>
+
+          {/* Botão de Salvar */}
+          <div className="flex justify-end pt-4">
+            <button
+              onClick={handleSaveSiteConfig}
+              disabled={isSavingSite}
+              className="bg-brand-600 hover:bg-brand-700 text-white px-8 py-3 rounded-xl font-bold flex items-center gap-2 disabled:opacity-50 transition-colors"
+            >
+              {isSavingSite ? (
+                <Icons.RefreshCw size={20} className="animate-spin" />
+              ) : (
+                <Icons.Save size={20} />
+              )}
+              {isSavingSite ? 'Salvando...' : 'Salvar Configurações do Site'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Detalhes do Plano Atual */}
+      {isDetailsModalOpen && currentPlanDetails && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white dark:bg-dark-card w-full max-w-md rounded-2xl overflow-hidden shadow-2xl border border-slate-200 dark:border-white/10">
+            <div className="bg-brand-900 p-6 text-white relative">
+              <button
+                onClick={() => setIsDetailsModalOpen(false)}
+                className="absolute top-4 right-4 text-white/60 hover:text-white transition-colors"
+              >
+                <Icons.X size={24} />
+              </button>
+              <span className="bg-brand-500/30 text-brand-200 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider border border-brand-400/30 mb-3 inline-block">
+                Seu Plano Atual
+              </span>
+              <h3 className="text-3xl font-serif font-bold uppercase">{currentPlanDetails.name}</h3>
+              <p className="text-brand-200 text-sm mt-2">{currentPlanDetails.description}</p>
+            </div>
+
+            <div className="p-6">
+              <h4 className="text-sm font-bold text-slate-800 dark:text-white uppercase tracking-wider mb-4">
+                O que está incluído:
+              </h4>
+              <ul className="space-y-3 max-h-[40vh] overflow-y-auto pr-2 custom-scrollbar">
+                {currentPlanDetails.features.map((feature, i) => (
+                  <li key={i} className="flex items-start gap-3 text-sm text-slate-700 dark:text-slate-300">
+                    <div className="bg-brand-100 dark:bg-brand-900/30 p-1 rounded-full shrink-0 mt-0.5">
+                      <Icons.Check size={14} className="text-brand-600 dark:text-brand-400" />
+                    </div>
+                    <span className="leading-tight">{feature}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="p-4 bg-slate-50 dark:bg-white/5 border-t border-slate-100 dark:border-white/10 flex justify-end">
+              <button
+                onClick={() => setIsDetailsModalOpen(false)}
+                className="px-6 py-2.5 bg-slate-200 hover:bg-slate-300 dark:bg-white/10 dark:hover:bg-white/20 text-slate-800 dark:text-white rounded-xl font-bold transition-colors"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

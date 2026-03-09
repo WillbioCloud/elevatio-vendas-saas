@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   BrowserRouter,
   Routes,
@@ -16,7 +16,6 @@ import ProtectedRoute from './components/ProtectedRoute';
 import SuperAdminRoute from './components/SuperAdminRoute';
 import { AnimatePresence } from 'framer-motion';
 
-import Layout from './components/Layout';
 import AdminLayout from './components/AdminLayout';
 import SaasLayout from './components/SaasLayout';
 import AnimatedPage from './components/AnimatedPage';
@@ -26,13 +25,14 @@ import { useTrackVisit } from './hooks/useTrackVisit';
 import { supabase } from './lib/supabase';
 
 // Public Pages
-import Home from './pages/Home';
-import Properties from './pages/Properties';
-import PropertyDetail from './pages/PropertyDetail';
 import Login from './pages/Login';
-import About from './pages/About';
-import Services from './pages/Services';
-import Financiamentos from './pages/Financiamentos';
+
+// Website Landing Pages (Master Domain Only)
+import SiteHome from './pages/website/SiteHome';
+import SiteSignup from './pages/website/SiteSignup';
+
+// Template Router
+import TenantRouter from './templates/TenantRouter';
 
 // Admin Pages
 import AdminDashboard from './pages/AdminDashboard';
@@ -44,6 +44,7 @@ import AdminAnalytics from './pages/AdminAnalytics';
 import AdminConfig from './pages/AdminConfig';
 import AdminContracts from './pages/AdminContracts';
 import AdminContractDetails from './pages/AdminContractDetails';
+import AdminSiteBuilder from './pages/AdminSiteBuilder';
 import PendingApproval from './pages/PendingApproval';
 
 // Super Admin (SaaS) Pages
@@ -55,6 +56,56 @@ import SaasContracts from './pages/saas/SaasContracts';
 import SaasSettings from './pages/saas/SaasSettings';
 import SaasSupport from './pages/saas/SaasSupport';
 
+// ============================================================================
+// 🧠 ROTEADOR INTELIGENTE MULTI-TENANT (Elevatio Vendas SaaS)
+// ============================================================================
+/**
+ * Identifica o tipo de ambiente baseado no hostname:
+ * - 'landing': Domínio principal (elevatiovendas.com) → Landing Page do SaaS
+ * - 'superadmin': Subdomínio admin (admin.elevatiovendas.com) → Painel Super Admin
+ * - 'app': Subdomínio de cliente (imobiliaria.elevatiovendas.com) → CRM da Imobiliária
+ * - 'website': Domínio customizado (www.imobiliariadojoao.com.br) → Site do Cliente
+ */
+const getEnvironment = () => {
+  const hostname = window.location.hostname;
+
+  // Para desenvolvimento local (localhost) - Força o modo app/crm para facilitar o dev
+  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    return { type: 'app', subdomain: 'dev' };
+  }
+
+  // Domínios principais da plataforma SaaS
+  const mainDomains = ['elevatiovendas.com', 'elevatiovendas.vercel.app', 'lvh.me'];
+  
+  const isMainDomain = mainDomains.some(domain => 
+    hostname === domain || hostname === `www.${domain}`
+  );
+  
+  if (isMainDomain) {
+    return { type: 'landing' }; // Mostra a Landing Page do SaaS (SiteHome)
+  }
+
+  const isAdminDomain = mainDomains.some(domain => 
+    hostname === `admin.${domain}`
+  );
+  
+  if (isAdminDomain) {
+    return { type: 'superadmin' }; // Redireciona para o painel do Dono do SaaS
+  }
+
+  const isSubdomain = mainDomains.some(domain => 
+    hostname.endsWith(`.${domain}`)
+  );
+  
+  if (isSubdomain) {
+    const subdomain = hostname.split('.')[0];
+    return { type: 'app', subdomain }; // CRM da Imobiliária (ex: nomedaimobiliaria.elevatiovendas.com)
+  }
+
+  // Se não caiu em nenhuma regra acima, é um Domínio Customizado de um cliente!
+  return { type: 'website', customDomain: hostname }; // Site do Cliente (ex: www.imobiliariadojoao.com.br)
+};
+
 const ScrollToTop = () => {
   const { pathname } = useLocation();
 
@@ -65,29 +116,7 @@ const ScrollToTop = () => {
   return null;
 };
 
-const SessionEnforcer: React.FC = () => {
-  const { user, loading } = useAuth();
-  const navigate = useNavigate();
-  const location = useLocation();
 
-  useEffect(() => {
-    const role = user?.role ?? (user?.user_metadata as { role?: string } | undefined)?.role;
-    const isSuperAdmin = role === 'super_admin';
-
-    if (!loading && user) {
-      // 1. Se for Super Admin e tentar acessar a raiz, o login ou qualquer tela do CRM (/admin)
-      if (isSuperAdmin && (location.pathname === '/' || location.pathname.startsWith('/admin'))) {
-        navigate('/saas/dashboard', { replace: true });
-      }
-      // 2. Se for Corretor/Admin de imobiliária e estiver no login ou na raiz
-      else if (!isSuperAdmin && (location.pathname === '/' || location.pathname === '/admin/login')) {
-        navigate('/admin/dashboard', { replace: true });
-      }
-    }
-  }, [loading, user, location.pathname, navigate]);
-
-  return null;
-};
 
 const PageTracker: React.FC = () => {
   useTrackVisit();
@@ -114,13 +143,9 @@ const UserPresenceTracker: React.FC = () => {
   return null;
 };
 
-const PageWrapper = ({ children }: { children: React.ReactNode }) => (
-  <Layout>
-    <AnimatedPage>{children}</AnimatedPage>
-  </Layout>
-);
 
-const AppRoutes: React.FC = () => {
+
+const AppRoutes: React.FC<{ env: { type: string; subdomain?: string; customDomain?: string } }> = ({ env }) => {
   const location = useLocation();
   const routeKey = useMemo(() => location.pathname, [location.pathname]);
 
@@ -134,33 +159,23 @@ const AppRoutes: React.FC = () => {
       <AnimatePresence mode="wait">
         <Routes location={location} key={routeKey}>
           
-          {/* === 1. A ROTA RAIZ (A REGRA DE OURO) === */}
-          <Route 
-            path="/" 
-            element={
-              isMasterDomain 
-                ? <Navigate to="/admin/login" replace /> // Se for localhost/master, VAI PARA O LOGIN
-                : <PageWrapper><Home /></PageWrapper>    // Se for subdomínio/cliente, VAI PARA A VITRINE
-            } 
-          />
-
-          {/* === 2. AS ROTAS DA VITRINE (SÓ EXISTEM PARA OS CLIENTES) === */}
-          {!isMasterDomain && (
+          {/* === 1. ROTAS DA LANDING PAGE DO SAAS (MASTER DOMAIN ONLY) === */}
+          {isMasterDomain && (
             <>
-              <Route path="/imoveis" element={<PageWrapper><Properties /></PageWrapper>} />
-              <Route path="/imoveis/:slug" element={<PageWrapper><PropertyDetail /></PageWrapper>} />
-              <Route path="/bairros/:slug" element={<PageWrapper><Properties /></PageWrapper>} />
-              <Route path="/servicos" element={<PageWrapper><Services /></PageWrapper>} />
-              <Route path="/sobre" element={<PageWrapper><About /></PageWrapper>} />
-              <Route path="/contato" element={<PageWrapper><div className="pt-20 text-center dark:text-white">Contato</div></PageWrapper>} />
-              <Route path="/financiamentos" element={<AnimatedPage><Financiamentos /></AnimatedPage>} />
+              <Route path="/" element={<AnimatedPage><SiteHome /></AnimatedPage>} />
+              <Route path="/registro" element={<AnimatedPage><SiteSignup /></AnimatedPage>} />
             </>
           )}
 
-          {/* === 3. A ROTA DE LOGIN DO CRM (COMUM A TODOS) === */}
+          {/* === 2. ROTA DOS SITES DOS CLIENTES (Templates) === */}
+          {!isMasterDomain && (
+            <Route path="/*" element={<TenantRouter customDomain={env.customDomain} />} />
+          )}
+
+          {/* === 4. A ROTA DE LOGIN DO CRM (COMUM A TODOS) === */}
           <Route path="/admin/login" element={<AnimatedPage><Login /></AnimatedPage>} />
 
-          {/* === 4. ROTAS PROTEGIDAS DO CRM (COMUNS A TODOS) === */}
+          {/* === 5. ROTAS PROTEGIDAS DO CRM (COMUNS A TODOS) === */}
           <Route path="/admin/pendente" element={<ProtectedRoute allowInactive={true}><PendingApproval /></ProtectedRoute>} />
 
           <Route path="/admin" element={<ProtectedRoute><AdminContextWrapper /></ProtectedRoute>}>
@@ -175,11 +190,12 @@ const AppRoutes: React.FC = () => {
               <Route path="contratos" element={<AdminContracts />} />
               <Route path="contratos/:id" element={<AdminContractDetails />} />
               <Route path="analytics" element={<AdminAnalytics />} />
+              <Route path="site" element={<AdminSiteBuilder />} />
               <Route path="config" element={<AdminConfig />} />
             </Route>
           </Route>
 
-          {/* === 5. ROTAS SUPER ADMIN (PAINEL SaaS) === */}
+          {/* === 6. ROTAS SUPER ADMIN (PAINEL SaaS) === */}
           <Route
             path="/saas"
             element={
@@ -209,6 +225,19 @@ const AppRoutes: React.FC = () => {
 };
 
 const App: React.FC = () => {
+  // ============================================================================
+  // 🎯 ESTADO DO AMBIENTE (Multi-tenant Router)
+  // ============================================================================
+  const [env, setEnv] = useState<{ 
+    type: string; 
+    subdomain?: string; 
+    customDomain?: string 
+  }>({ type: 'loading' });
+
+  useEffect(() => {
+    setEnv(getEnvironment());
+  }, []);
+
   useEffect(() => {
     const handleBeforeUnload = () => {
       sessionStorage.removeItem('trimoveis_navigation');
@@ -218,6 +247,25 @@ const App: React.FC = () => {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, []);
 
+  // ============================================================================
+  // 🔄 LOADING STATE (Enquanto identifica o ambiente)
+  // ============================================================================
+  if (env.type === 'loading') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-500 mx-auto mb-4"></div>
+          <p className="text-slate-600 dark:text-slate-400 text-sm">Carregando Elevatio Vendas...</p>
+        </div>
+      </div>
+    );
+  }
+
+
+
+  // ============================================================================
+  // 🚀 ROTA 2: LANDING PAGE DO SAAS + SUPER ADMIN + CRM (Aplicação Principal)
+  // ============================================================================
   return (
     <BrowserRouter>
       <TenantProvider>
@@ -225,10 +273,9 @@ const App: React.FC = () => {
           <ThemeProvider>
             <ToastProvider>
               <SessionManager />
-              <SessionEnforcer />
               <PageTracker />
               <UserPresenceTracker />
-              <AppRoutes />
+              <AppRoutes env={env} />
             </ToastProvider>
           </ThemeProvider>
         </AuthProvider>
