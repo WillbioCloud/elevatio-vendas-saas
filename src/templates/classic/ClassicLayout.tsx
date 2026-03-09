@@ -33,7 +33,11 @@ const ClassicLayout: React.FC = () => {
   const siteData = tenant?.site_data;
   const primaryColor = siteData?.primary_color || '#1e293b';
   const secondaryColor = siteData?.secondary_color || '#3b82f6';
-  const logoUrl = siteData?.logo_url;
+  
+  // LÓGICA DAS LOGOS
+  const logoUrl = siteData?.logo_url || 'https://placehold.co/400x100/png?text=Logo+Completa';
+  // Lemos a logo alternativa do banco (se não existir, faz fallback para a principal)
+  const logoAltUrl = siteData?.logo_alt_url || siteData?.logo_white_url || logoUrl;
   
   const contactEmail = siteData?.contact?.email || '';
   const contactPhone = siteData?.contact?.phone || '';
@@ -56,12 +60,14 @@ const ClassicLayout: React.FC = () => {
         <div className="container mx-auto px-4 md:px-8 flex items-center justify-between">
           
           {/* ESQUERDA: Logo (Independente) */}
-          <Link to="/" className="flex items-center z-10">
+          <Link to="/" className="flex-shrink-0 flex items-center z-50">
             {logoUrl ? (
               <img
-                src={logoUrl}
+                // Troca a logo dependendo se rolou a tela ou não
+                src={scrolled ? logoAltUrl : logoUrl}
                 alt={companyName}
-                className="h-8 w-auto object-contain"
+                // Aumentamos a altura (h-12 no mobile, h-16 no desktop)
+                className="h-12 md:h-16 w-auto object-contain transition-all duration-500 ease-in-out"
               />
             ) : (
               <span 
@@ -152,69 +158,71 @@ const ClassicLayout: React.FC = () => {
 
           {/* Mobile Menu Toggle */}
           <button 
-            className={`md:hidden transition-colors ${scrolled ? 'text-slate-900' : 'text-white'}`}
+            className={`md:hidden transition-colors z-50 ${scrolled ? 'text-slate-900' : 'text-white'}`}
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
           >
-            {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+            {isMobileMenuOpen ? <X size={28} /> : <Menu size={28} />}
           </button>
         </div>
 
         {/* Mobile Navigation */}
         {isMobileMenuOpen && (
-          <div className="md:hidden mt-4 mx-4 bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
-            <div className="py-4 px-6 flex flex-col space-y-4">
+          <div className="md:hidden absolute top-full left-0 w-full bg-white shadow-xl border-t border-gray-100 z-40 animate-fade-in">
+            <div className="py-6 px-6 flex flex-col space-y-5">
               <Link 
                 to="/" 
                 onClick={() => setIsMobileMenuOpen(false)}
-                className="text-sm font-medium text-gray-700 hover:text-gray-900"
+                className="text-base font-semibold text-gray-700 hover:text-gray-900 py-2 transition-colors"
               >
                 Início
               </Link>
               <Link 
                 to="/imoveis" 
                 onClick={() => setIsMobileMenuOpen(false)}
-                className="text-sm font-medium text-gray-700 hover:text-gray-900"
+                className="text-base font-semibold text-gray-700 hover:text-gray-900 py-2 transition-colors"
               >
                 Imóveis
               </Link>
               <Link 
                 to="/servicos" 
                 onClick={() => setIsMobileMenuOpen(false)}
-                className="text-sm font-medium text-gray-700 hover:text-gray-900"
+                className="text-base font-semibold text-gray-700 hover:text-gray-900 py-2 transition-colors"
               >
                 Serviços
               </Link>
               <Link 
                 to="/sobre" 
                 onClick={() => setIsMobileMenuOpen(false)}
-                className="text-sm font-medium text-gray-700 hover:text-gray-900"
+                className="text-base font-semibold text-gray-700 hover:text-gray-900 py-2 transition-colors"
               >
                 Sobre
               </Link>
-              {whatsappLink ? (
-                <a
-                  href={whatsappLink}
-                  target="_blank"
-                  rel="noreferrer"
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className="text-sm font-semibold text-white px-6 py-2.5 rounded-lg text-center flex items-center justify-center gap-2"
-                  style={{ backgroundColor: primaryColor }}
-                >
-                  <MessageCircle size={18} />
-                  Fale Conosco
-                </a>
-              ) : (
-                <button
-                  onClick={() => {
-                    setIsContactModalOpen(true);
-                    setIsMobileMenuOpen(false);
-                  }}
-                  className="text-sm font-semibold text-white px-6 py-2.5 rounded-lg text-center"
-                  style={{ backgroundColor: primaryColor }}
-                >
-                  Fale Conosco
-                </button>
-              )}
+              <div className="pt-4 border-t border-gray-200">
+                {whatsappLink ? (
+                  <a
+                    href={whatsappLink}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="w-full text-sm font-semibold text-white px-6 py-3.5 rounded-xl text-center flex items-center justify-center gap-2 shadow-lg"
+                    style={{ backgroundColor: primaryColor }}
+                  >
+                    <MessageCircle size={20} />
+                    Fale Conosco
+                  </a>
+                ) : (
+                  <button
+                    onClick={() => {
+                      setIsContactModalOpen(true);
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className="w-full text-sm font-semibold text-white px-6 py-3.5 rounded-xl text-center shadow-lg"
+                    style={{ backgroundColor: primaryColor }}
+                  >
+                    Fale Conosco
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         )}

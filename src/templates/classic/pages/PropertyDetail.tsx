@@ -241,17 +241,17 @@ const PropertyDetail: React.FC = () => {
       )}
 
       {/* CABEÇALHO */}
-      <div className="bg-white pt-28 md:pt-32 pb-4 shadow-sm relative z-10">
+      <div className="bg-white pt-24 sm:pt-28 md:pt-32 pb-4 shadow-sm relative z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-gray-500 hover:text-gray-900 mb-6 font-semibold">
             <ArrowLeft size={18} /> Voltar
           </button>
-          <h1 className="text-3xl md:text-5xl font-semibold text-gray-900 mb-2">
+          <h1 className="text-2xl sm:text-3xl md:text-5xl font-semibold text-gray-900 mb-2">
             {property?.title || 'Imóvel'}
           </h1>
           <div className="flex items-center text-gray-500 gap-2">
             <MapPin size={18} />
-            <span>{safeNeighborhood}, {safeCity}</span>
+            <span className="text-sm sm:text-base">{safeNeighborhood}, {safeCity}</span>
           </div>
         </div>
       </div>
@@ -373,8 +373,8 @@ const PropertyDetail: React.FC = () => {
           </div>
 
           <div className="lg:col-span-4">
-            <div className="lg:sticky lg:top-20 bg-white p-8 rounded-3xl shadow-xl border">
-              <h2 className="text-4xl font-bold text-gray-900 mb-6">
+            <div className="lg:sticky lg:top-24 bg-white p-6 sm:p-8 rounded-3xl shadow-xl border w-full">
+              <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-6">
                 {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(property?.price || 0)}
               </h2>
 
@@ -390,7 +390,7 @@ const PropertyDetail: React.FC = () => {
                     type="text"
                     required
                     placeholder="Nome Completo"
-                    className="w-full px-4 py-3 rounded-xl bg-gray-50 border-none focus:ring-2 outline-none"
+                    className="w-full px-4 py-3 rounded-xl bg-gray-50 border-none focus:ring-2 outline-none text-base"
                     value={contactForm.name}
                     onChange={e => setContactForm({ ...contactForm, name: e.target.value })}
                   />
@@ -398,14 +398,14 @@ const PropertyDetail: React.FC = () => {
                     type="tel"
                     required
                     placeholder="Seu WhatsApp"
-                    className="w-full px-4 py-3 rounded-xl bg-gray-50 border-none focus:ring-2 outline-none"
+                    className="w-full px-4 py-3 rounded-xl bg-gray-50 border-none focus:ring-2 outline-none text-base"
                     value={contactForm.phone}
                     onChange={e => setContactForm({ ...contactForm, phone: e.target.value })}
                   />
                   <input
                     type="email"
                     placeholder="Seu e-mail (opcional)"
-                    className="w-full px-4 py-3 rounded-xl bg-gray-50 border-none focus:ring-2 outline-none"
+                    className="w-full px-4 py-3 rounded-xl bg-gray-50 border-none focus:ring-2 outline-none text-base"
                     value={contactForm.email}
                     onChange={e => setContactForm({ ...contactForm, email: e.target.value })}
                   />
@@ -413,7 +413,7 @@ const PropertyDetail: React.FC = () => {
                   <button
                     type="submit"
                     disabled={formStatus === 'sending'}
-                    className="w-full text-white font-bold py-4 rounded-xl flex justify-center gap-2"
+                    className="w-full text-white font-bold py-4 rounded-xl flex justify-center items-center gap-2 text-base sm:text-lg"
                     style={{ backgroundColor: primaryColor }}
                   >
                     {formStatus === 'sending' ? (
