@@ -1410,12 +1410,12 @@ const AdminConfig: React.FC = () => {
               </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Opção Clássica */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
+              {/* Opção Minimalist (O antigo Classic limpo) */}
               <div
-                onClick={() => setSiteTemplate('classic')}
+                onClick={() => setSiteTemplate('minimalist')}
                 className={`cursor-pointer rounded-xl border-2 transition-all overflow-hidden ${
-                  siteTemplate === 'classic'
+                  siteTemplate === 'minimalist'
                     ? 'border-brand-500 ring-4 ring-brand-500/20'
                     : 'border-slate-200 dark:border-slate-700 hover:border-brand-300'
                 }`}
@@ -1428,21 +1428,45 @@ const AdminConfig: React.FC = () => {
                     <div className="w-1/3 h-16 bg-white dark:bg-slate-700 rounded shadow-sm"></div>
                   </div>
                 </div>
-                <div className="p-4 bg-white dark:bg-dark-card">
+                <div className="p-4 bg-white dark:bg-dark-card h-full">
+                  <div className="flex justify-between items-center mb-1">
+                    <h4 className="font-bold text-slate-800 dark:text-white">Minimalist</h4>
+                    {siteTemplate === 'minimalist' && <Icons.CheckCircle className="text-brand-500" size={20} />}
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    Design limpo e direto, focado em alta conversão, leveza e simplicidade. Fundo claro.
+                  </p>
+                </div>
+              </div>
+
+              {/* Opção Classic (O novo formato tradicional) */}
+              <div
+                onClick={() => setSiteTemplate('classic')}
+                className={`cursor-pointer rounded-xl border-2 transition-all overflow-hidden flex flex-col ${
+                  siteTemplate === 'classic'
+                    ? 'border-brand-500 ring-4 ring-brand-500/20'
+                    : 'border-slate-200 dark:border-slate-700 hover:border-brand-300'
+                }`}
+              >
+                <div className="h-40 bg-white dark:bg-slate-900 p-4 flex flex-col items-center justify-center border-b border-slate-200 dark:border-slate-800">
+                  <div className="w-full h-6 bg-slate-200 dark:bg-slate-800 rounded mb-3"></div>
+                  <div className="w-full h-20 bg-slate-100 dark:bg-slate-800/50 rounded shadow-inner"></div>
+                </div>
+                <div className="p-4 bg-white dark:bg-dark-card flex-grow">
                   <div className="flex justify-between items-center mb-1">
                     <h4 className="font-bold text-slate-800 dark:text-white">Classic</h4>
                     {siteTemplate === 'classic' && <Icons.CheckCircle className="text-brand-500" size={20} />}
                   </div>
                   <p className="text-xs text-slate-500">
-                    Design original, focado em alta conversão e simplicidade. Fundo claro.
+                    Design tradicional e confiável. Estrutura padrão com barra de navegação sólida e destaque central.
                   </p>
                 </div>
               </div>
 
-              {/* Opção Luxo */}
+              {/* Opção Luxury */}
               <div
                 onClick={() => setSiteTemplate('luxury')}
-                className={`cursor-pointer rounded-xl border-2 transition-all overflow-hidden ${
+                className={`cursor-pointer rounded-xl border-2 transition-all overflow-hidden flex flex-col ${
                   siteTemplate === 'luxury'
                     ? 'border-brand-500 ring-4 ring-brand-500/20'
                     : 'border-slate-200 dark:border-slate-700 hover:border-brand-300'
@@ -1452,13 +1476,37 @@ const AdminConfig: React.FC = () => {
                   <div className="w-3/4 h-8 bg-slate-800 rounded mb-4"></div>
                   <div className="w-1/2 h-10 bg-brand-600 rounded"></div>
                 </div>
-                <div className="p-4 bg-white dark:bg-dark-card">
+                <div className="p-4 bg-white dark:bg-dark-card flex-grow">
                   <div className="flex justify-between items-center mb-1">
                     <h4 className="font-bold text-slate-800 dark:text-white">Luxury</h4>
                     {siteTemplate === 'luxury' && <Icons.CheckCircle className="text-brand-500" size={20} />}
                   </div>
                   <p className="text-xs text-slate-500">
-                    Design premium em tons escuros. Ideal para imóveis de alto padrão e exclusividade.
+                    Design premium em tons escuros. Ideal para imóveis de alto padrão e máxima exclusividade.
+                  </p>
+                </div>
+              </div>
+
+              {/* Opção Modern */}
+              <div
+                onClick={() => setSiteTemplate('modern')}
+                className={`cursor-pointer rounded-xl border-2 transition-all overflow-hidden flex flex-col ${
+                  siteTemplate === 'modern'
+                    ? 'border-brand-500 ring-4 ring-brand-500/20'
+                    : 'border-slate-200 dark:border-slate-700 hover:border-brand-300'
+                }`}
+              >
+                <div className="h-40 bg-slate-50 dark:bg-slate-800 p-4 flex flex-col items-center border-b border-slate-200 dark:border-slate-700 relative overflow-hidden">
+                  <div className="absolute top-3 left-3 right-3 h-6 bg-white dark:bg-slate-700 rounded-full shadow-sm"></div>
+                  <div className="mt-12 w-[90%] h-24 bg-brand-100 dark:bg-brand-900/30 rounded-2xl"></div>
+                </div>
+                <div className="p-4 bg-white dark:bg-dark-card flex-grow">
+                  <div className="flex justify-between items-center mb-1">
+                    <h4 className="font-bold text-slate-800 dark:text-white">Modern</h4>
+                    {siteTemplate === 'modern' && <Icons.CheckCircle className="text-brand-500" size={20} />}
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    Visual de vanguarda. Elementos flutuantes, cantos arredondados e foco total na imersão visual.
                   </p>
                 </div>
               </div>
