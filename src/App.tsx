@@ -28,7 +28,7 @@ import { supabase } from './lib/supabase';
 import Login from './pages/Login';
 
 // Website Landing Pages (Master Domain Only)
-import SiteHome from './pages/website/SiteHome';
+import LandingPage from './pages/website/LandingPage';
 import SiteSignup from './pages/website/SiteSignup';
 
 // Template Router
@@ -82,7 +82,7 @@ const getEnvironment = () => {
   );
   
   if (isMainDomain) {
-    return { type: 'landing' }; // Mostra a Landing Page do SaaS (SiteHome)
+    return { type: 'landing' }; // Mostra a Landing Page do SaaS (LandingPage)
   }
 
   const isAdminDomain = mainDomains.some(domain => 
@@ -162,7 +162,7 @@ const AppRoutes: React.FC<{ env: { type: string; subdomain?: string; customDomai
           {/* === 1. ROTAS DA LANDING PAGE DO SAAS (MASTER DOMAIN ONLY) === */}
           {isMasterDomain && (
             <>
-              <Route path="/" element={<AnimatedPage><SiteHome /></AnimatedPage>} />
+              <Route path="/" element={<AnimatedPage><LandingPage /></AnimatedPage>} />
               <Route path="/registro" element={<AnimatedPage><SiteSignup /></AnimatedPage>} />
             </>
           )}
