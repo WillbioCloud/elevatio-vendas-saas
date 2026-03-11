@@ -29,7 +29,6 @@ import Login from './pages/Login';
 
 // Website Landing Pages (Master Domain Only)
 import LandingPage from './pages/website/LandingPage';
-import SiteSignup from './pages/website/SiteSignup';
 
 // Template Router
 import TenantRouter from './templates/TenantRouter';
@@ -163,7 +162,8 @@ const AppRoutes: React.FC<{ env: { type: string; subdomain?: string; customDomai
           {isMasterDomain && (
             <>
               <Route path="/" element={<AnimatedPage><LandingPage /></AnimatedPage>} />
-              <Route path="/registro" element={<AnimatedPage><SiteSignup /></AnimatedPage>} />
+              <Route path="/registro" element={<Navigate to="/admin/login?mode=signup" replace />} />
+              <Route path="/cadastro" element={<Navigate to="/admin/login?mode=signup" replace />} />
             </>
           )}
 
