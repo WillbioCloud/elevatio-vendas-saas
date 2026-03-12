@@ -1,30 +1,46 @@
 // src/types.ts
 
 export interface SiteData {
-  logo_url: string | null;
+  // Identidade Visual (Já existentes e novos)
+  logo_url?: string | null;
   logo_alt_url?: string | null;
-  favicon_url: string | null;
-  hero_image_url: string | null;
-  hero_title: string | null;
-  hero_subtitle: string | null;
-  about_text: string | null;
-  about_image_url: string | null;
-  primary_color: string;
-  secondary_color: string;
+  favicon_url?: string | null;
+  hero_image_url?: string | null;
+  primary_color?: string;
+  secondary_color?: string;
+
+  // Hero Section (Textos da Página Inicial)
+  hero_title?: string;
+  hero_subtitle?: string;
+
+  // Página "Sobre Nós"
+  about_image_url?: string | null;
+  about_title?: string;
+  about_text?: string;
+
+  // Seções Opcionais
   show_partnerships?: boolean;
   partners?: string[];
-  contact: { 
+
+  // Redes Sociais (Footer)
+  social_instagram?: string;
+  social_facebook?: string;
+  social_linkedin?: string;
+  social_youtube?: string;
+
+  // Campos legados (mantidos para compatibilidade)
+  contact?: { 
     email: string | null; 
     phone: string | null; 
     address: string | null;
   };
-  social: { 
+  social?: { 
     instagram: string | null; 
     facebook: string | null; 
     whatsapp: string | null; 
     youtube: string | null;
   };
-  seo: { 
+  seo?: { 
     title: string | null; 
     description: string | null;
   };

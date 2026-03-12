@@ -101,17 +101,21 @@ const Home: React.FC = () => {
       
       {/* 1. HERO SECTION */}
       <section className="relative h-screen flex items-center justify-center">
-        <div className="absolute inset-0 z-0">
-          <img src={heroImageUrl} alt="Hero" className="w-full h-full object-cover" />
+        <div 
+          className="absolute inset-0 z-0 bg-cover bg-center bg-no-repeat"
+          style={{ 
+            backgroundImage: `url('${siteData?.hero_image_url || 'https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?ixlib=rb-4.0.3&auto=format&fit=crop&w=2000&q=80'}')` 
+          }}
+        >
           <div className="absolute inset-0 bg-slate-900/40"></div>
         </div>
 
         <div className="relative z-10 w-full max-w-5xl mx-auto px-4 text-center mt-16 md:mt-0">
-          <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-white mb-6 drop-shadow-lg">
-            {heroTitle}
+          <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-white mb-6 drop-shadow-lg leading-tight">
+            {siteData?.hero_title || 'Encontre o imóvel perfeito para você'}
           </h1>
           <p className="text-lg md:text-2xl text-white/90 mb-10 max-w-3xl mx-auto drop-shadow-md">
-            {heroSubtitle}
+            {siteData?.hero_subtitle || 'A sua jornada para a casa dos sonhos começa aqui. Descubra as melhores opções na sua região.'}
           </p>
 
           <form onSubmit={handleSearch} className="bg-white p-4 md:p-4 rounded-2xl md:rounded-full shadow-2xl flex flex-col md:flex-row items-stretch md:items-center gap-4 md:gap-3 max-w-4xl mx-auto animate-fade-in-up">

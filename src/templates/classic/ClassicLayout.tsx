@@ -256,39 +256,55 @@ const ClassicLayout: React.FC = () => {
               <p className="text-sm text-gray-600 leading-relaxed mb-6">
                 © {new Date().getFullYear()} {companyName}
               </p>
-              <div className="flex items-center space-x-3">
-                {facebook && (
-                  <a
-                    href={facebook.startsWith('http') ? facebook : `https://facebook.com/${facebook}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="w-9 h-9 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center transition-colors"
-                  >
-                    <Facebook size={16} className="text-gray-700" />
-                  </a>
-                )}
-                <a
-                  href="#"
-                  className="w-9 h-9 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center transition-colors"
-                >
-                  <Twitter size={16} className="text-gray-700" />
-                </a>
-                {instagram && (
-                  <a
-                    href={instagram.startsWith('http') ? instagram : `https://instagram.com/${instagram.replace('@', '')}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="w-9 h-9 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center transition-colors"
-                  >
-                    <Instagram size={16} className="text-gray-700" />
-                  </a>
-                )}
-                <a
-                  href="#"
-                  className="w-9 h-9 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center transition-colors"
-                >
-                  <Linkedin size={16} className="text-gray-700" />
-                </a>
+              
+              {/* Redes Sociais Dinâmicas */}
+              <div>
+                <h4 className="font-bold text-slate-800 mb-4">Siga-nos</h4>
+                <div className="flex gap-3">
+                  {(!siteData?.social_instagram && !siteData?.social_facebook && !siteData?.social_linkedin && !siteData?.social_youtube) && (
+                    <p className="text-sm text-slate-500">Redes sociais não configuradas.</p>
+                  )}
+                  {siteData?.social_instagram && (
+                    <a 
+                      href={siteData.social_instagram} 
+                      target="_blank" 
+                      rel="noopener noreferrer" 
+                      className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 hover:bg-pink-600 hover:text-white transition-colors"
+                    >
+                      <Instagram size={20} />
+                    </a>
+                  )}
+                  {siteData?.social_facebook && (
+                    <a 
+                      href={siteData.social_facebook} 
+                      target="_blank" 
+                      rel="noopener noreferrer" 
+                      className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 hover:bg-blue-600 hover:text-white transition-colors"
+                    >
+                      <Facebook size={20} />
+                    </a>
+                  )}
+                  {siteData?.social_youtube && (
+                    <a 
+                      href={siteData.social_youtube} 
+                      target="_blank" 
+                      rel="noopener noreferrer" 
+                      className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 hover:bg-red-600 hover:text-white transition-colors"
+                    >
+                      <Icons.Youtube size={20} />
+                    </a>
+                  )}
+                  {siteData?.social_linkedin && (
+                    <a 
+                      href={siteData.social_linkedin} 
+                      target="_blank" 
+                      rel="noopener noreferrer" 
+                      className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 hover:bg-sky-600 hover:text-white transition-colors"
+                    >
+                      <Linkedin size={20} />
+                    </a>
+                  )}
+                </div>
               </div>
             </div>
 

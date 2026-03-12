@@ -5,6 +5,9 @@ import { Icons } from '../components/Icons';
 import { useAuth } from '../contexts/AuthContext';
 import GamificationModal from '../components/GamificationModal';
 import { PLANS } from '../config/plans';
+import { uploadCompanyAsset } from '../lib/storage';
+import { SiteData } from '../types';
+import { Loader2, Upload, X } from 'lucide-react';
 
 interface Profile {
   id: string;
@@ -98,6 +101,116 @@ const getPresenceStatus = (lastSeen?: string) => {
   };
 };
 
+interface ImageUploaderProps {
+  label: string;
+  currentUrl: string | null;
+  onUpload: (url: string) => void;
+  assetType: 'logo' | 'logo_alt' | 'hero' | 'favicon' | 'about';
+  companyId: string;
+  aspectRatio?: string;
+}
+
+const ImageUploader: React.FC<ImageUploaderProps> = ({ 
+  label, 
+  currentUrl, 
+  onUpload, 
+  assetType, 
+  companyId,
+  aspectRatio = 'aspect-video'
+}) => {
+  const [uploading, setUploading] = useState(false);
+  const [preview, setPreview] = useState<string | null>(currentUrl);
+
+  useEffect(() => {
+    setPreview(currentUrl);
+  }, [currentUrl]);
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      alert('Por favor, selecione apenas arquivos de imagem.');
+      return;
+    }
+
+    try {
+      setUploading(true);
+      const url = await uploadCompanyAsset(file, companyId, assetType);
+      setPreview(url);
+      onUpload(url);
+    } catch (error) {
+      console.error('Erro no upload:', error);
+      alert('Erro ao fazer upload da imagem. Tente novamente.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleRemove = () => {
+    setPreview(null);
+    onUpload('');
+  };
+
+  return (
+    <div>
+      <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-3">
+        {label}
+      </label>
+      
+      {preview ? (
+        <div className="relative group">
+          <div className={`${aspectRatio} w-full rounded-xl overflow-hidden border-2 border-slate-200 dark:border-slate-700`}>
+            <img src={preview} alt={label} className="w-full h-full object-cover" />
+          </div>
+          <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity rounded-xl flex items-center justify-center gap-3">
+            <label className="cursor-pointer bg-white text-slate-900 px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 hover:bg-slate-100 transition-colors">
+              <Upload size={16} />
+              Trocar
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleFileChange}
+                className="hidden"
+                disabled={uploading}
+              />
+            </label>
+            <button
+              onClick={handleRemove}
+              className="bg-red-500 text-white px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 hover:bg-red-600 transition-colors"
+            >
+              <X size={16} />
+              Remover
+            </button>
+          </div>
+        </div>
+      ) : (
+        <label className={`${aspectRatio} w-full border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-brand-500 hover:bg-brand-50/50 dark:hover:bg-brand-900/10 transition-all group`}>
+          <input
+            type="file"
+            accept="image/*"
+            onChange={handleFileChange}
+            className="hidden"
+            disabled={uploading}
+          />
+          {uploading ? (
+            <>
+              <Loader2 className="animate-spin text-brand-500 mb-2" size={32} />
+              <p className="text-sm text-slate-500">Enviando...</p>
+            </>
+          ) : (
+            <>
+              <Upload className="text-slate-400 group-hover:text-brand-500 mb-2" size={32} />
+              <p className="text-sm font-bold text-slate-600 dark:text-slate-400">Clique para enviar</p>
+              <p className="text-xs text-slate-500 mt-1">PNG, JPG ou WEBP</p>
+            </>
+          )}
+        </label>
+      )}
+    </div>
+  );
+};
+
 const AdminConfig: React.FC = () => {
   const { user, refreshUser } = useAuth();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -129,8 +242,31 @@ const AdminConfig: React.FC = () => {
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [siteTemplate, setSiteTemplate] = useState('classic');
   const [siteDomain, setSiteDomain] = useState('');
+  const [companySubdomain, setCompanySubdomain] = useState('');
   const [isSavingSite, setIsSavingSite] = useState(false);
   const [isOpeningPortal, setIsOpeningPortal] = useState(false);
+  const [siteSubTab, setSiteSubTab] = useState<'templates' | 'identity' | 'hero' | 'about' | 'social'>('templates');
+  const [siteData, setSiteData] = useState<SiteData>({
+    logo_url: null,
+    logo_alt_url: null,
+    favicon_url: null,
+    hero_image_url: null,
+    about_image_url: null,
+    primary_color: '#0ea5e9',
+    secondary_color: '#1e293b',
+    hero_title: '',
+    hero_subtitle: '',
+    about_title: '',
+    about_text: '',
+    show_partnerships: true,
+    social_instagram: '',
+    social_facebook: '',
+    social_linkedin: '',
+    social_youtube: '',
+    contact: { email: null, phone: null, address: null },
+    social: { instagram: null, facebook: null, whatsapp: null, youtube: null },
+    seo: { title: null, description: null },
+  });
 
   const fetchSettings = async () => {
     const { data } = await supabase.from('settings').select('*').eq('id', 1).maybeSingle();
@@ -162,13 +298,24 @@ const AdminConfig: React.FC = () => {
     
     const { data } = await supabase
       .from('companies')
-      .select('template, domain')
+      .select('template, domain, site_data, subdomain')
       .eq('id', user.company_id)
       .maybeSingle();
     
     if (data) {
       setSiteTemplate(data.template || 'classic');
-      setSiteDomain(data.domain || '');
+      setSiteDomain(data.domain || ''); // Apenas o domínio customizado
+      setCompanySubdomain(data.subdomain || ''); // Salva o subdomínio real do sistema
+      
+      if (data.site_data) {
+        setSiteData(prev => ({
+          ...prev,
+          ...data.site_data,
+          contact: { ...prev.contact, ...data.site_data.contact },
+          social: { ...prev.social, ...data.site_data.social },
+          seo: { ...prev.seo, ...data.site_data.seo },
+        }));
+      }
     }
   };
 
@@ -543,7 +690,8 @@ const AdminConfig: React.FC = () => {
         .from('companies')
         .update({ 
           template: siteTemplate,
-          domain: finalDomain
+          domain: finalDomain,
+          site_data: siteData
         })
         .eq('id', user.company_id);
 
@@ -555,6 +703,26 @@ const AdminConfig: React.FC = () => {
       alert('Erro ao salvar configurações: ' + error.message);
     } finally {
       setIsSavingSite(false);
+    }
+  };
+
+  const handleOpenWebsite = () => {
+    if (!companySubdomain) {
+      alert('Subdomínio não configurado. Verifique as configurações da empresa.');
+      return;
+    }
+
+    const hostname = window.location.hostname;
+    const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
+    const port = window.location.port ? `:${window.location.port}` : '';
+
+    if (isLocalhost) {
+      // Abre no ambiente local com a porta correta (ex: http://imob.localhost:5173)
+      window.open(`http://${companySubdomain}.localhost${port}`, '_blank');
+    } else {
+      // Força o uso do domínio de teste base do sistema (ex: https://imob.elevatiovendas.com)
+      const baseDomain = hostname.replace(/^admin\./, '');
+      window.open(`https://${companySubdomain}.${baseDomain}`, '_blank');
     }
   };
 
@@ -597,56 +765,28 @@ const AdminConfig: React.FC = () => {
         <p className="text-sm text-gray-500 dark:text-slate-400">Gerencie seu perfil, segurança e equipe.</p>
       </div>
 
-      <div className="flex gap-6 border-b border-gray-200 dark:border-slate-700 overflow-x-auto">
-        <button
-          onClick={() => setActiveTab('profile')}
-          className={`pb-4 px-2 text-sm font-bold transition-colors border-b-2 flex items-center gap-2 whitespace-nowrap ${activeTab === 'profile' ? 'border-brand-500 text-brand-600 dark:text-brand-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
-        >
-          <Icons.User size={18} /> Perfil
-        </button>
-
-        <button
-          onClick={() => setActiveTab('security')}
-          className={`pb-4 px-2 text-sm font-bold transition-colors border-b-2 flex items-center gap-2 whitespace-nowrap ${activeTab === 'security' ? 'border-brand-500 text-brand-600 dark:text-brand-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
-        >
-          <Icons.Lock size={18} /> Segurança
-        </button>
-
-        {isAdmin && (
+      {/* Abas Principais de Configuração (Design Premium) */}
+      <div className="flex overflow-x-auto ev-main-scroll gap-2 p-1.5 bg-slate-200/50 dark:bg-[#0a0f1c]/50 backdrop-blur-md rounded-2xl w-fit border border-slate-300/50 dark:border-white/5 shadow-inner">
+        {[
+          { id: 'profile', label: 'Perfil', icon: Icons.User },
+          { id: 'security', label: 'Segurança', icon: Icons.Lock },
+          { id: 'team', label: 'Equipe', icon: Icons.Users, adminOnly: true },
+          { id: 'traffic', label: 'Tráfego', icon: Icons.Globe, adminOnly: true },
+          { id: 'subscription', label: 'Assinatura', icon: Icons.CreditCard, adminOnly: true },
+          { id: 'site', label: 'Meu Site', icon: Icons.Layout, adminOnly: true }
+        ].filter(t => !t.adminOnly || isAdmin).map(tab => (
           <button
-            onClick={() => setActiveTab('team')}
-            className={`pb-4 px-2 text-sm font-bold transition-colors border-b-2 flex items-center gap-2 whitespace-nowrap ${activeTab === 'team' ? 'border-brand-500 text-brand-600 dark:text-brand-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id as any)}
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all shrink-0 ${
+              activeTab === tab.id 
+                ? 'bg-white dark:bg-brand-600 text-brand-600 dark:text-white shadow-md' 
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-white/50 dark:hover:bg-white/5'
+            }`}
           >
-            <Icons.Users size={18} /> Equipe
+            <tab.icon size={16} /> {tab.label}
           </button>
-        )}
-
-        {isAdmin && (
-          <button
-            onClick={() => setActiveTab('traffic')}
-            className={`pb-4 px-2 text-sm font-bold transition-colors border-b-2 flex items-center gap-2 whitespace-nowrap ${activeTab === 'traffic' ? 'border-brand-500 text-brand-600 dark:text-brand-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
-          >
-            <Icons.Globe size={18} /> Tráfego
-          </button>
-        )}
-
-        {isAdmin && (
-          <button
-            onClick={() => setActiveTab('subscription')}
-            className={`pb-4 px-2 text-sm font-bold transition-colors border-b-2 flex items-center gap-2 whitespace-nowrap ${activeTab === 'subscription' ? 'border-brand-500 text-brand-600 dark:text-brand-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
-          >
-            <Icons.CreditCard size={18} /> Assinatura
-          </button>
-        )}
-
-        {isAdmin && (
-          <button
-            onClick={() => setActiveTab('site')}
-            className={`pb-4 px-2 text-sm font-bold transition-colors border-b-2 flex items-center gap-2 whitespace-nowrap ${activeTab === 'site' ? 'border-brand-500 text-brand-600 dark:text-brand-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
-          >
-            <Icons.Globe size={18} /> Meu Site
-          </button>
-        )}
+        ))}
       </div>
 
       {activeTab === 'profile' && (
@@ -1397,7 +1537,56 @@ const AdminConfig: React.FC = () => {
       )}
 
       {activeTab === 'site' && (
-        <div className="space-y-8 animate-fade-in">
+        <div className="space-y-6 animate-fade-in">
+          {/* Cabeçalho do Construtor */}
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-2">
+            <div>
+              <h2 className="text-2xl font-serif font-bold text-slate-800 dark:text-white">Construtor do Site</h2>
+              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Personalize a identidade e os textos da sua página pública.</p>
+            </div>
+            <div className="flex items-center gap-3 w-full md:w-auto">
+              <button 
+                onClick={handleOpenWebsite} 
+                className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-700 dark:text-white px-5 py-2.5 rounded-xl font-bold hover:bg-slate-50 dark:hover:bg-white/10 transition-all shadow-sm text-sm"
+              >
+                <Icons.Globe size={18} /> Visitar Site
+              </button>
+              <button 
+                onClick={handleSaveSiteConfig} 
+                disabled={isSavingSite} 
+                className="flex-1 md:flex-none bg-gradient-to-r from-brand-600 to-sky-500 text-white px-6 py-2.5 rounded-xl font-bold hover:scale-105 transition-all shadow-[0_4px_14px_rgba(14,165,233,0.35)] flex items-center justify-center gap-2 text-sm"
+              >
+                {isSavingSite ? <Icons.Loader2 className="animate-spin" size={18} /> : <Icons.Save size={18} />}
+                {isSavingSite ? 'Salvando...' : 'Salvar Alterações'}
+              </button>
+            </div>
+          </div>
+
+          {/* Sub-Abas do Construtor */}
+          <div className="flex overflow-x-auto ev-main-scroll gap-2 p-1.5 bg-slate-100 dark:bg-white/5 backdrop-blur-md rounded-2xl w-fit border border-slate-200 dark:border-white/10 shadow-inner mb-6">
+            {[
+              { id: 'templates', label: 'Templates & Domínio', icon: Icons.Layout },
+              { id: 'identity', label: 'Identidade Visual', icon: Icons.Palette },
+              { id: 'hero', label: 'Página Inicial', icon: Icons.Home },
+              { id: 'about', label: 'Quem Somos', icon: Icons.Users },
+              { id: 'social', label: 'Redes Sociais', icon: Icons.Share2 }
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setSiteSubTab(tab.id as any)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-xs transition-all shrink-0 ${
+                  siteSubTab === tab.id 
+                    ? 'bg-white dark:bg-brand-600 text-brand-600 dark:text-white shadow-md' 
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+                }`}
+              >
+                <tab.icon size={14} /> {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {siteSubTab === 'templates' && (
+            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2">
           {/* SEÇÃO 1: Escolha do Template */}
           <div className="bg-white dark:bg-dark-card rounded-2xl border border-slate-200 dark:border-dark-border p-6 shadow-sm">
             <div className="mb-6">
@@ -1560,21 +1749,235 @@ const AdminConfig: React.FC = () => {
             </div>
           </div>
 
-          {/* Botão de Salvar */}
-          <div className="flex justify-end pt-4">
-            <button
-              onClick={handleSaveSiteConfig}
-              disabled={isSavingSite}
-              className="bg-brand-600 hover:bg-brand-700 text-white px-8 py-3 rounded-xl font-bold flex items-center gap-2 disabled:opacity-50 transition-colors"
-            >
-              {isSavingSite ? (
-                <Icons.RefreshCw size={20} className="animate-spin" />
-              ) : (
-                <Icons.Save size={20} />
-              )}
-              {isSavingSite ? 'Salvando...' : 'Salvar Configurações do Site'}
-            </button>
+          {/* Botão de Salvar - REMOVIDO (agora está no topo) */}
           </div>
+          )} {/* Fim do siteSubTab === 'templates' */}
+
+          {siteSubTab === 'identity' && (
+            <div className="space-y-6 animate-fade-in">
+              <div>
+                <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-1">Identidade Visual</h2>
+                <p className="text-sm text-slate-500 dark:text-slate-400">Defina as cores e logos da sua marca.</p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <ImageUploader
+                  label="Logo Principal"
+                  currentUrl={siteData.logo_url}
+                  onUpload={(url) => setSiteData({...siteData, logo_url: url})}
+                  assetType="logo"
+                  companyId={user?.company_id || ''}
+                  aspectRatio="aspect-[3/1]"
+                />
+
+                <ImageUploader
+                  label="Logo Símbolo (Rolagem)"
+                  currentUrl={siteData.logo_alt_url || null}
+                  onUpload={(url) => setSiteData({...siteData, logo_alt_url: url})}
+                  assetType="logo_alt"
+                  companyId={user?.company_id || ''}
+                  aspectRatio="aspect-square"
+                />
+
+                <ImageUploader
+                  label="Favicon (Ícone do Site)"
+                  currentUrl={siteData.favicon_url}
+                  onUpload={(url) => setSiteData({...siteData, favicon_url: url})}
+                  assetType="favicon"
+                  companyId={user?.company_id || ''}
+                  aspectRatio="aspect-square"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-slate-200 dark:border-slate-700">
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-3">
+                    Cor Primária
+                  </label>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="color"
+                      value={siteData.primary_color}
+                      onChange={(e) => setSiteData({...siteData, primary_color: e.target.value})}
+                      className="w-16 h-16 rounded-xl cursor-pointer border-2 border-slate-200 dark:border-slate-600"
+                    />
+                    <div className="flex-1">
+                      <input
+                        type="text"
+                        value={siteData.primary_color}
+                        onChange={(e) => setSiteData({...siteData, primary_color: e.target.value})}
+                        className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl px-4 py-3 text-sm font-mono text-slate-900 dark:text-white focus:ring-2 focus:ring-brand-500 outline-none uppercase"
+                        placeholder="#0f172a"
+                      />
+                      <p className="text-xs text-slate-500 mt-1">Cor principal da marca</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-3">
+                    Cor Secundária
+                  </label>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="color"
+                      value={siteData.secondary_color}
+                      onChange={(e) => setSiteData({...siteData, secondary_color: e.target.value})}
+                      className="w-16 h-16 rounded-xl cursor-pointer border-2 border-slate-200 dark:border-slate-600"
+                    />
+                    <div className="flex-1">
+                      <input
+                        type="text"
+                        value={siteData.secondary_color}
+                        onChange={(e) => setSiteData({...siteData, secondary_color: e.target.value})}
+                        className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl px-4 py-3 text-sm font-mono text-slate-900 dark:text-white focus:ring-2 focus:ring-brand-500 outline-none uppercase"
+                        placeholder="#3b82f6"
+                      />
+                      <p className="text-xs text-slate-500 mt-1">Cor de destaque e botões</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-6 border-t border-slate-200 dark:border-slate-700">
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4">Seções do Site</h3>
+                <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-700">
+                  <div>
+                    <p className="font-bold text-slate-800 dark:text-slate-200">Exibir Seção de Parcerias</p>
+                    <p className="text-sm text-slate-500">Mostra o carrossel contínuo de logomarcas na página inicial.</p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer hover:scale-105 transition-transform">
+                    <input
+                      type="checkbox"
+                      className="sr-only peer"
+                      checked={siteData.show_partnerships !== false}
+                      onChange={(e) => setSiteData({...siteData, show_partnerships: e.target.checked})}
+                    />
+                    <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-brand-300 dark:peer-focus:ring-brand-800 rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-500"></div>
+                  </label>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {siteSubTab === 'hero' && (
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2">
+              <h3 className="text-xl font-serif font-bold text-slate-800 dark:text-white mb-4">
+                Destaque da Página Inicial
+              </h3>
+              
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <div className="space-y-5">
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                      Título Principal (Headline)
+                    </label>
+                    <input
+                      type="text"
+                      value={siteData.hero_title || ''}
+                      onChange={e => setSiteData({...siteData, hero_title: e.target.value})}
+                      placeholder="Ex: Encontre o imóvel dos seus sonhos"
+                      className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-brand-500/50 transition-all text-slate-800 dark:text-white"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                      Subtítulo Descritivo
+                    </label>
+                    <textarea
+                      value={siteData.hero_subtitle || ''}
+                      onChange={e => setSiteData({...siteData, hero_subtitle: e.target.value})}
+                      placeholder="Ex: As melhores opções de casas e apartamentos na região..."
+                      rows={3}
+                      className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-brand-500/50 transition-all text-slate-800 dark:text-white resize-none"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <ImageUploader
+                    label="Imagem de Fundo (Capa da Home)"
+                    currentUrl={siteData.hero_image_url}
+                    onUpload={(url) => setSiteData({ ...siteData, hero_image_url: url })}
+                    assetType="hero"
+                    companyId={user?.company_id || ''}
+                    aspectRatio="aspect-video"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {siteSubTab === 'about' && (
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2">
+              <h3 className="text-xl font-serif font-bold text-slate-800 dark:text-white mb-4">
+                Página "Quem Somos"
+              </h3>
+              
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <div className="space-y-5">
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                      Título da Seção
+                    </label>
+                    <input
+                      type="text"
+                      value={siteData.about_title || ''}
+                      onChange={e => setSiteData({...siteData, about_title: e.target.value})}
+                      placeholder="Ex: Conheça a Nossa História"
+                      className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-brand-500/50 transition-all text-slate-800 dark:text-white"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                      Texto Descritivo
+                    </label>
+                    <textarea
+                      value={siteData.about_text || ''}
+                      onChange={e => setSiteData({...siteData, about_text: e.target.value})}
+                      placeholder="Conte um pouco dos valores e da missão da sua imobiliária..."
+                      rows={6}
+                      className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-brand-500/50 transition-all text-slate-800 dark:text-white resize-none"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <ImageUploader
+                    label="Foto da Equipe ou Fachada"
+                    currentUrl={siteData.about_image_url}
+                    onUpload={(url) => setSiteData({ ...siteData, about_image_url: url })}
+                    assetType="about"
+                    companyId={user?.company_id || ''}
+                    aspectRatio="aspect-square"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {siteSubTab === 'social' && (
+            <div className="bg-white dark:bg-dark-card rounded-3xl border border-slate-200 dark:border-dark-border p-6 md:p-8 shadow-sm animate-in fade-in slide-in-from-bottom-2">
+              <h3 className="text-xl font-serif font-bold text-slate-800 dark:text-white mb-2">Redes Sociais</h3>
+              <p className="text-sm text-slate-500 mb-6">Cole os links completos para exibir os ícones no rodapé do site.</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {['instagram', 'facebook', 'linkedin', 'youtube'].map(social => (
+                  <div key={social} className="flex flex-col gap-2">
+                    <span className="text-sm font-bold text-slate-600 dark:text-slate-400 capitalize">{social}</span>
+                    <input 
+                      type="url" 
+                      value={siteData[`social_${social}`] || ''} 
+                      onChange={e => setSiteData({...siteData, [`social_${social}`]: e.target.value})} 
+                      placeholder={`https://${social}.com/sua-pagina`} 
+                      className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3 outline-none focus:border-brand-500 text-sm" 
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
