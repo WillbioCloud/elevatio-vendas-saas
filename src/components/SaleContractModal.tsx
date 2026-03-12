@@ -2,7 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { Icons } from './Icons';
 import { Lead, Property } from '../types';
+import { useNotification } from '../contexts/NotificationContext';
+import { generateContract } from '../utils/contractGenerator';
 import { useAuth } from '../contexts/AuthContext';
+import { useTenant } from '../contexts/TenantContext';
+import { SALE_DOCUMENTS, ADMIN_DOCUMENTS } from '../constants/contractTypes';
 
 interface SaleContractModalProps {
   isOpen: boolean;
@@ -13,10 +17,33 @@ interface SaleContractModalProps {
 
 const SaleContractModal: React.FC<SaleContractModalProps> = ({ isOpen, onClose, onSuccess, contractData }) => {
   const { user } = useAuth();
+  const { tenant } = useTenant();
+  const { addNotification } = useNotification();
   const [loading, setLoading] = useState(false);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [properties, setProperties] = useState<Property[]>([]);
   const [brokers, setBrokers] = useState<any[]>([]);
+  const [documentType, setDocumentType] = useState('sale_standard');
+  
+  const [contractDetails, setContractDetails] = useState({
+    buyer_document: '',
+    buyer_profession: '',
+    buyer_marital_status: '',
+    buyer_address: '',
+    buyer_spouse_name: '',
+    buyer_spouse_document: '',
+    buyer_spouse_profession: '',
+    seller_document: '',
+    seller_profession: '',
+    seller_marital_status: '',
+    seller_address: '',
+    seller_spouse_name: '',
+    seller_spouse_document: '',
+    seller_spouse_profession: '',
+    permuta_address: '',
+    permuta_description: '',
+    permuta_value: ''
+  });
 
   const [formData, setFormData] = useState({
     lead_id: '',
@@ -31,16 +58,34 @@ const SaleContractModal: React.FC<SaleContractModalProps> = ({ isOpen, onClose, 
     permutation_details: '',
     permutation_value: '',
     commission_percentage: '',
-    commission_value: '', // NOVO CAMPO
+    commission_value: '',
     sale_is_cash: false,
     sale_payment_method: 'Pix',
     sale_consortium_value: '',
     installments_count: '12',
     due_day: '10',
-    readjustment_index: 'IPCA', // IPCA é o padrão atual
-    interest_rate: '1.0', // 1% ao mês é padrão de mercado
+    readjustment_index: 'IPCA',
+    interest_rate: '1.0',
     spouse_details: '',
   });
+
+  // Efeito Mágico: Autofill dos dados do Proprietário quando um imóvel é selecionado
+  useEffect(() => {
+    if (formData.property_id && properties.length > 0) {
+      const selectedProp = properties.find(p => p.id === formData.property_id);
+      if (selectedProp) {
+        setContractDetails(prev => ({
+          ...prev,
+          seller_document: selectedProp.owner_document || prev.seller_document,
+          seller_profession: selectedProp.owner_profession || prev.seller_profession,
+          seller_marital_status: selectedProp.owner_marital_status || prev.seller_marital_status,
+          seller_address: selectedProp.owner_address || prev.seller_address,
+          seller_spouse_name: selectedProp.owner_spouse_name || prev.seller_spouse_name,
+          seller_spouse_document: selectedProp.owner_spouse_document || prev.seller_spouse_document,
+        }));
+      }
+    }
+  }, [formData.property_id, properties]);
 
   useEffect(() => {
     if (isOpen) fetchData();
@@ -92,7 +137,6 @@ const SaleContractModal: React.FC<SaleContractModalProps> = ({ isOpen, onClose, 
     };
     fetchLeadProperties();
   }, [formData.lead_id, leads]);
-
 
   // MODO DE VISUALIZAÇÃO: Preenche os dados se contractData existir
   useEffect(() => {
@@ -175,16 +219,14 @@ const SaleContractModal: React.FC<SaleContractModalProps> = ({ isOpen, onClose, 
   const permutation = formData.has_permutation ? (Number(formData.permutation_value) || 0) : 0;
   const consortium = Number(formData.sale_consortium_value) || 0;
 
-  // Calcula se o valor já foi coberto por entrada + créditos
   const totalCovered = downPayment + financing + consortium;
   const isFullyCovered = totalValue > 0 && totalCovered >= totalValue;
 
-  // Efeito para auto-marcar como "À vista" se o valor já estiver 100% coberto e definir o método real
+  // Efeito para auto-marcar como "À vista" se o valor já estiver 100% coberto
   useEffect(() => {
     if (isFullyCovered) {
-      let bestMethod = 'Pix'; // Default
+      let bestMethod = 'Pix';
 
-      // Descobre qual foi a maior fonte do dinheiro para marcar no método de pagamento
       if (financing >= consortium && financing > 0) {
         bestMethod = 'Financiamento';
       } else if (consortium > financing && consortium > 0) {
@@ -194,7 +236,6 @@ const SaleContractModal: React.FC<SaleContractModalProps> = ({ isOpen, onClose, 
       }
 
       setFormData(prev => {
-        // Só atualiza o estado se for diferente, para evitar loop infinito de re-renderização
         if (!prev.sale_is_cash || prev.sale_payment_method !== bestMethod) {
           return { ...prev, sale_is_cash: true, sale_payment_method: bestMethod };
         }
@@ -203,17 +244,60 @@ const SaleContractModal: React.FC<SaleContractModalProps> = ({ isOpen, onClose, 
     }
   }, [isFullyCovered, financing, consortium]);
   
-  // O Saldo a Parcelar Direto é a diferença entre o Total e tudo que já foi pago/financiado
   const saldoDevedor = formData.sale_is_cash ? 0 : Math.max(0, totalValue - downPayment - financing - permutation - consortium);
   const parcelasCount = Number(formData.installments_count) || 1;
   const valorParcela = parcelasCount > 0 ? saldoDevedor / parcelasCount : 0;
 
-  // Índices anuais (Média de mercado para simulação realista)
   const INDICES_ANUAIS: Record<string, number> = {
     'IPCA': 4.50,
     'IGPM': 3.70,
     'INCC': 5.10,
     'FIXO': 0
+  };
+
+  const handleGeneratePDF = (e: React.MouseEvent) => {
+    e.preventDefault();
+    
+    const selectedLead = leads.find(l => l.id === formData.lead_id);
+    const selectedPropertyData = properties.find(p => p.id === formData.property_id);
+    
+    const contractDataObj = {
+      buyer_name: selectedLead?.name || '',
+      buyer_phone: selectedLead?.phone || '',
+      buyer_email: selectedLead?.email || '',
+      buyer_document: contractDetails.buyer_document,
+      buyer_profession: contractDetails.buyer_profession,
+      buyer_marital_status: contractDetails.buyer_marital_status,
+      buyer_address: contractDetails.buyer_address,
+      buyer_spouse_name: contractDetails.buyer_spouse_name,
+      buyer_spouse_document: contractDetails.buyer_spouse_document,
+      buyer_spouse_profession: contractDetails.buyer_spouse_profession,
+      seller_name: selectedPropertyData?.owner_name || 'Proprietário Atual',
+      seller_phone: selectedPropertyData?.owner_phone || '',
+      seller_email: selectedPropertyData?.owner_email || '',
+      seller_document: contractDetails.seller_document,
+      seller_profession: contractDetails.seller_profession,
+      seller_marital_status: contractDetails.seller_marital_status,
+      seller_address: contractDetails.seller_address,
+      seller_spouse_name: contractDetails.seller_spouse_name,
+      seller_spouse_document: contractDetails.seller_spouse_document,
+      seller_spouse_profession: contractDetails.seller_spouse_profession,
+      permuta_address: contractDetails.permuta_address,
+      permuta_description: contractDetails.permuta_description,
+      permuta_value: contractDetails.permuta_value,
+      property_address: selectedPropertyData ? `${selectedPropertyData.address}, ${selectedPropertyData.city}` : '',
+      property_description: selectedPropertyData?.title || '',
+      property_registration: selectedPropertyData?.property_registration || '',
+      property_registry_office: selectedPropertyData?.property_registry_office || '',
+      property_municipal_registration: selectedPropertyData?.property_municipal_registration || '',
+      total_value: formData.sale_total_value,
+      down_payment: formData.sale_down_payment || '0',
+      bank_name: formData.sale_financing_bank || '',
+      bank_agency: '',
+      bank_account: '',
+    };
+    
+    generateContract(documentType, contractDataObj, tenant);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -224,11 +308,11 @@ const SaleContractModal: React.FC<SaleContractModalProps> = ({ isOpen, onClose, 
     try {
       const payload = {
         type: 'sale',
-        status: 'pending', // Requer aprovação da diretoria
+        status: 'pending',
         lead_id: formData.lead_id || null,
         property_id: formData.property_id || null,
         broker_id: formData.broker_id || null,
-        start_date: formData.sale_date, // Usando a data selecionada
+        start_date: formData.sale_date,
         sale_total_value: totalValue,
         sale_down_payment: downPayment,
         sale_financing_value: financing,
@@ -241,7 +325,7 @@ const SaleContractModal: React.FC<SaleContractModalProps> = ({ isOpen, onClose, 
         sale_payment_method: formData.sale_is_cash ? formData.sale_payment_method : null,
         commission_percentage: Number(formData.commission_percentage) || 0,
         commission_total: Number(formData.commission_value) || 0,
-        company_id: user.company_id,
+        company_id: user?.company_id,
       };
 
       const { data: contract, error } = await supabase.from('contracts').insert([payload]).select().single();
@@ -252,12 +336,9 @@ const SaleContractModal: React.FC<SaleContractModalProps> = ({ isOpen, onClose, 
         let valorAtualParcela = valorParcela;
         const taxaAnualIndice = INDICES_ANUAIS[formData.readjustment_index] || 0;
         const jurosMensal = Number(formData.interest_rate) || 0;
-
-        // O Juros é aplicado ao mês e o Índice é aplicado ao ano (a cada 12 meses)
         const taxaJurosAnualizada = jurosMensal * 12;
 
         for (let i = 1; i <= parcelasCount; i++) {
-          // A cada virada de 12 meses, a parcela sofre reajuste
           if (i > 1 && (i - 1) % 12 === 0) {
             const reajusteTotal = (taxaAnualIndice + taxaJurosAnualizada) / 100;
             valorAtualParcela = valorAtualParcela * (1 + reajusteTotal);
@@ -276,8 +357,7 @@ const SaleContractModal: React.FC<SaleContractModalProps> = ({ isOpen, onClose, 
             amount: valorAtualParcela,
             due_date: dueDate.toISOString().split('T')[0],
             status: 'pending',
-            notes: `Ano ${Math.ceil(i/12)} - Correção: ${formData.readjustment_index} + ${formData.interest_rate}% a.m.`,
-            company_id: user.company_id,
+            notes: `Ano ${Math.ceil(i/12)} - Correção: ${formData.readjustment_index} + ${formData.interest_rate}% a.m.`
           });
         }
         await supabase.from('installments').insert(installments);
@@ -292,6 +372,12 @@ const SaleContractModal: React.FC<SaleContractModalProps> = ({ isOpen, onClose, 
         await supabase.from('properties').update({ status: 'Vendido' }).eq('id', formData.property_id);
       }
 
+      addNotification({
+        title: 'Contrato Gerado',
+        message: 'Novo contrato de venda gerado com sucesso.',
+        type: 'property'
+      });
+
       onSuccess();
       onClose();
     } catch (error: any) {
@@ -305,7 +391,7 @@ const SaleContractModal: React.FC<SaleContractModalProps> = ({ isOpen, onClose, 
 
   return (
     <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
+      <div className="bg-white/95 dark:bg-[#0a0f1c]/95 backdrop-blur-2xl rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
 
         <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50 shrink-0">
           <div>
@@ -370,7 +456,6 @@ const SaleContractModal: React.FC<SaleContractModalProps> = ({ isOpen, onClose, 
                   <input type="number" required value={formData.sale_total_value} onChange={e => handleTotalValueChange(e.target.value)} className="w-full px-4 py-4 rounded-xl border-2 border-brand-300 bg-brand-50 text-brand-900 font-black text-2xl outline-none focus:border-brand-600 shadow-inner" placeholder="Ex: 850000" />
                 </div>
                 
-                {/* BLOCO DA COMISSÃO */}
                 <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 md:col-span-2 grid grid-cols-2 gap-3">
                   <div className="col-span-2"><p className="text-[10px] font-bold text-slate-400 uppercase">Honorários / Comissão</p></div>
                   <div>
@@ -393,174 +478,269 @@ const SaleContractModal: React.FC<SaleContractModalProps> = ({ isOpen, onClose, 
               </div>
             </section>
 
-            {/* 3. PARCELAMENTO E FINANCIAMENTO */}
-            <section className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
-                  <Icons.Wallet size={14} /> Modalidade de Pagamento
-                </h3>
-                <div className="flex items-center gap-3">
-                  <span className="mr-3 text-xs font-bold text-emerald-600 bg-emerald-100 px-2 py-1 rounded">Venda À Vista?</span>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={formData.sale_is_cash}
-                    onClick={() => setFormData(prev => ({ ...prev, sale_is_cash: !prev.sale_is_cash }))}
-                    className={`${
-                      formData.sale_is_cash ? 'bg-brand-600' : 'bg-slate-200'
-                    } relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-brand-500`}
-                  >
-                    <span
-                      className={`${
-                        formData.sale_is_cash ? 'translate-x-5' : 'translate-x-0'
-                      } pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out`}
-                    />
-                  </button>
-                </div>
-              </div>
+            {/* TIPO DE DOCUMENTO CRECI */}
+            <section className="pt-4 border-t border-slate-100">
+              <label className="block text-sm font-bold text-slate-700 mb-2">Tipo de Documento (Modelo CRECI)</label>
+              <select
+                value={documentType}
+                onChange={(e) => setDocumentType(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-900 focus:ring-2 focus:ring-brand-500 outline-none"
+              >
+                <optgroup label="Documentos de Venda">
+                  {SALE_DOCUMENTS.map(doc => (
+                    <option key={doc.id} value={doc.id}>{doc.title}</option>
+                  ))}
+                </optgroup>
+                <optgroup label="Administrativos e Outros">
+                  {ADMIN_DOCUMENTS.map(doc => (
+                    <option key={doc.id} value={doc.id}>{doc.title}</option>
+                  ))}
+                </optgroup>
+              </select>
+            </section>
 
-              {isFullyCovered && (
-                <p className="text-xs text-emerald-600 font-bold mt-2 flex items-center gap-1 animate-fade-in">
-                  <Icons.CheckCircle size={14} />
-                  Valor 100% coberto (Entrada + Crédito). Considerado à vista para o vendedor.
-                </p>
-              )}
+            {/* Dados Complementares - Continua aqui */}
+            {documentType && documentType !== '' && (
+              <div className="pt-4 border-t border-slate-100 animate-fade-in space-y-4">
+                <h4 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                  <Icons.FileText size={16} className="text-brand-500" /> Dados Complementares para o Contrato
+                </h4>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-fade-in pt-2 border-t border-slate-200">
-                {formData.sale_is_cash ? (
-                  <div className="md:col-span-2">
-                    <label className="block text-xs font-bold text-slate-600 mb-1">Método de Pagamento</label>
-                    <select value={formData.sale_payment_method} onChange={e => setFormData({ ...formData, sale_payment_method: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-slate-200 outline-none focus:border-emerald-500 text-sm bg-white">
-                      <option value="Pix">Transferência / PIX</option>
-                      <option value="TED">TED / DOC</option>
-                      <option value="Cheque">Cheque Administrativo</option>
-                      <option value="Financiamento">Financiamento Bancário</option>
-                      <option value="Consórcio">Consórcio</option>
-                      <option value="Misto">Misto (Entrada + Crédito)</option>
-                    </select>
+                {/* Comprador */}
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+                  <h5 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Qualificação do Comprador</h5>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs text-slate-600 mb-1">CPF/CNPJ</label>
+                      <input type="text" value={contractDetails.buyer_document} onChange={e => setContractDetails({...contractDetails, buyer_document: e.target.value})} className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-brand-500" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-600 mb-1">Estado Civil</label>
+                      <select value={contractDetails.buyer_marital_status} onChange={e => setContractDetails({...contractDetails, buyer_marital_status: e.target.value})} className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-brand-500">
+                        <option value="">Selecione...</option>
+                        <option value="Solteiro(a)">Solteiro(a)</option>
+                        <option value="Casado(a)">Casado(a)</option>
+                        <option value="Divorciado(a)">Divorciado(a)</option>
+                        <option value="Viúvo(a)">Viúvo(a)</option>
+                        <option value="União Estável">União Estável</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-600 mb-1">Profissão</label>
+                      <input type="text" value={contractDetails.buyer_profession} onChange={e => setContractDetails({...contractDetails, buyer_profession: e.target.value})} className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-brand-500" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-600 mb-1">Endereço Residencial</label>
+                      <input type="text" value={contractDetails.buyer_address} onChange={e => setContractDetails({...contractDetails, buyer_address: e.target.value})} className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-brand-500" />
+                    </div>
                   </div>
-                ) : (
-                  <>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-600 mb-1">Financiamento Bancário (R$)</label>
-                      <input type="number" value={formData.sale_financing_value} onChange={e => setFormData({ ...formData, sale_financing_value: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-slate-200 outline-none text-sm" placeholder="Ex: 500000" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-600 mb-1">Consórcio (R$)</label>
-                      <input type="number" value={formData.sale_consortium_value} onChange={e => setFormData({ ...formData, sale_consortium_value: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-slate-200 outline-none text-sm bg-white" placeholder="Ex: 150000" />
-                    </div>
-                    
-                    {!isFullyCovered && (
-                      <div className="md:col-span-2 mt-2">
-                        <label className="block text-[10px] font-bold text-brand-600 uppercase mb-2">Parcelamento Direto (Restante do Saldo Devedor)</label>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-white p-3 rounded-lg border border-brand-100 shadow-sm">
-                          <div>
-                            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Qtd. Parcelas</label>
-                            <input type="number" value={formData.installments_count} onChange={e => setFormData({ ...formData, installments_count: e.target.value })} className="w-full px-3 py-2 rounded border border-slate-200 outline-none text-sm font-bold" />
-                          </div>
-                          <div>
-                            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Dia Venc.</label>
-                            <input type="number" min="1" max="31" value={formData.due_day} onChange={e => setFormData({ ...formData, due_day: e.target.value })} className="w-full px-3 py-2 rounded border border-slate-200 outline-none text-sm" />
-                          </div>
-                          <div>
-                            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Índice</label>
-                            <select value={formData.readjustment_index} onChange={e => setFormData({ ...formData, readjustment_index: e.target.value })} className="w-full px-3 py-2 rounded border border-slate-200 outline-none text-sm bg-white">
-                              <option value="IGPM">IGP-M</option>
-                              <option value="IPCA">IPCA</option>
-                              <option value="INCC">INCC</option>
-                              <option value="FIXO">Sem Correção</option>
-                            </select>
-                          </div>
-                          <div>
-                            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Juros (a.m)</label>
-                            <div className="relative">
-                              <input type="number" step="0.1" value={formData.interest_rate} onChange={e => setFormData({ ...formData, interest_rate: e.target.value })} className="w-full px-3 py-2 pr-6 rounded border border-slate-200 outline-none text-sm" />
-                              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-400">%</span>
-                            </div>
-                          </div>
-                        </div>
+
+                  {(contractDetails.buyer_marital_status === 'Casado(a)' || contractDetails.buyer_marital_status === 'União Estável') && (
+                    <div className="mt-3 pt-3 border-t border-slate-200 grid grid-cols-1 sm:grid-cols-3 gap-3 animate-fade-in">
+                      <div>
+                        <label className="block text-xs text-slate-600 mb-1">Nome do Cônjuge</label>
+                        <input type="text" value={contractDetails.buyer_spouse_name} onChange={e => setContractDetails({...contractDetails, buyer_spouse_name: e.target.value})} className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-brand-500" />
                       </div>
-                    )}
+                      <div>
+                        <label className="block text-xs text-slate-600 mb-1">CPF do Cônjuge</label>
+                        <input type="text" value={contractDetails.buyer_spouse_document} onChange={e => setContractDetails({...contractDetails, buyer_spouse_document: e.target.value})} className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-brand-500" />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-slate-600 mb-1">Profissão do Cônjuge</label>
+                        <input type="text" value={contractDetails.buyer_spouse_profession} onChange={e => setContractDetails({...contractDetails, buyer_spouse_profession: e.target.value})} className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-brand-500" />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Vendedor */}
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+                  <h5 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Qualificação do Vendedor</h5>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs text-slate-600 mb-1">CPF/CNPJ</label>
+                      <input type="text" value={contractDetails.seller_document} onChange={e => setContractDetails({...contractDetails, seller_document: e.target.value})} className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-brand-500" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-600 mb-1">Estado Civil</label>
+                      <select value={contractDetails.seller_marital_status} onChange={e => setContractDetails({...contractDetails, seller_marital_status: e.target.value})} className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-brand-500">
+                        <option value="">Selecione...</option>
+                        <option value="Solteiro(a)">Solteiro(a)</option>
+                        <option value="Casado(a)">Casado(a)</option>
+                        <option value="Divorciado(a)">Divorciado(a)</option>
+                        <option value="Viúvo(a)">Viúvo(a)</option>
+                        <option value="União Estável">União Estável</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-600 mb-1">Profissão</label>
+                      <input type="text" value={contractDetails.seller_profession} onChange={e => setContractDetails({...contractDetails, seller_profession: e.target.value})} className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-brand-500" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-600 mb-1">Endereço Residencial</label>
+                      <input type="text" value={contractDetails.seller_address} onChange={e => setContractDetails({...contractDetails, seller_address: e.target.value})} className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-brand-500" />
+                    </div>
+                  </div>
+
+                  {(contractDetails.seller_marital_status === 'Casado(a)' || contractDetails.seller_marital_status === 'União Estável') && (
+                    <div className="mt-3 pt-3 border-t border-slate-200 grid grid-cols-1 sm:grid-cols-3 gap-3 animate-fade-in">
+                      <div>
+                        <label className="block text-xs text-slate-600 mb-1">Nome do Cônjuge</label>
+                        <input type="text" value={contractDetails.seller_spouse_name} onChange={e => setContractDetails({...contractDetails, seller_spouse_name: e.target.value})} className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-brand-500" />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-slate-600 mb-1">CPF do Cônjuge</label>
+                        <input type="text" value={contractDetails.seller_spouse_document} onChange={e => setContractDetails({...contractDetails, seller_spouse_document: e.target.value})} className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-brand-500" />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-slate-600 mb-1">Profissão do Cônjuge</label>
+                        <input type="text" value={contractDetails.seller_spouse_profession} onChange={e => setContractDetails({...contractDetails, seller_spouse_profession: e.target.value})} className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-brand-500" />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {documentType === 'permuta' && (
+                  <div className="bg-brand-50 p-4 rounded-xl border border-brand-200 space-y-3 animate-fade-in">
+                    <h5 className="text-xs font-bold text-brand-700 uppercase tracking-wider flex items-center gap-2">
+                      <Icons.RefreshCw size={14} /> Dados do 2º Imóvel (Dado como pagamento)
+                    </h5>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="sm:col-span-2">
+                        <label className="block text-xs text-slate-600 mb-1">Endereço Completo do 2º Imóvel</label>
+                        <input type="text" value={contractDetails.permuta_address} onChange={e => setContractDetails({...contractDetails, permuta_address: e.target.value})} className="w-full bg-white border border-brand-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-brand-500" />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <label className="block text-xs text-slate-600 mb-1">Descrição (Tipo, área, matrícula)</label>
+                        <input type="text" value={contractDetails.permuta_description} onChange={e => setContractDetails({...contractDetails, permuta_description: e.target.value})} className="w-full bg-white border border-brand-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-brand-500" />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-slate-600 mb-1">Valor Atribuído na Permuta (R$)</label>
+                        <input type="text" value={contractDetails.permuta_value} onChange={e => setContractDetails({...contractDetails, permuta_value: e.target.value})} className="w-full bg-white border border-brand-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-brand-500" />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 3. FORMAS DE PAGAMENTO */}
+            <section>
+              <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2 border-b border-slate-100 pb-2">
+                <Icons.CreditCard size={16} /> Formas de Pagamento
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">Financiamento Bancário (R$)</label>
+                  <input type="number" value={formData.sale_financing_value} onChange={e => setFormData({ ...formData, sale_financing_value: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-slate-200 outline-none focus:border-brand-500 text-sm" placeholder="Ex: 680000" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">Banco Financiador</label>
+                  <input type="text" value={formData.sale_financing_bank} onChange={e => setFormData({ ...formData, sale_financing_bank: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-slate-200 outline-none focus:border-brand-500 text-sm" placeholder="Ex: Caixa Econômica" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">Consórcio (R$)</label>
+                  <input type="number" value={formData.sale_consortium_value} onChange={e => setFormData({ ...formData, sale_consortium_value: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-slate-200 outline-none focus:border-brand-500 text-sm" placeholder="Ex: 0" />
+                </div>
+                <div className="flex items-center gap-2 pt-6">
+                  <input type="checkbox" id="has_permutation" checked={formData.has_permutation} onChange={e => setFormData({ ...formData, has_permutation: e.target.checked })} className="w-4 h-4 text-brand-600 rounded focus:ring-brand-500" />
+                  <label htmlFor="has_permutation" className="text-sm font-bold text-slate-700">Possui Permuta (Troca de Imóvel)</label>
+                </div>
+                {formData.has_permutation && (
+                  <>
+                    <div className="md:col-span-2">
+                      <label className="block text-xs font-bold text-slate-600 mb-1">Descrição do Imóvel Dado em Permuta</label>
+                      <input type="text" value={formData.permutation_details} onChange={e => setFormData({ ...formData, permutation_details: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-slate-200 outline-none focus:border-brand-500 text-sm" placeholder="Ex: Apartamento 2 quartos, Setor Central" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">Valor da Permuta (R$)</label>
+                      <input type="number" value={formData.permutation_value} onChange={e => setFormData({ ...formData, permutation_value: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-slate-200 outline-none focus:border-brand-500 text-sm" placeholder="Ex: 0" />
+                    </div>
                   </>
                 )}
               </div>
             </section>
 
-            {/* 4. PERMUTA */}
-            <section className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
-                  <Icons.RefreshCw size={14} /> Houve Permuta? (Carro/Imóvel)
-                </h3>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input type="checkbox" className="sr-only peer" checked={formData.has_permutation} onChange={e => setFormData({ ...formData, has_permutation: e.target.checked })} />
-                  <div className="w-9 h-5 bg-slate-200 rounded-full peer peer-checked:bg-brand-500 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-4 after:w-4 after:transition-all"></div>
-                </label>
+            {/* 4. RESUMO E PARCELAMENTO */}
+            <section className="bg-gradient-to-br from-slate-50 to-slate-100 p-6 rounded-2xl border-2 border-slate-200">
+              <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-4 flex items-center gap-2">
+                <Icons.Calculator size={16} /> Resumo Financeiro
+              </h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
+                  <p className="text-[10px] text-slate-400 uppercase font-bold">Total Coberto</p>
+                  <p className="text-lg font-bold text-slate-800">{totalCovered.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
+                </div>
+                <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
+                  <p className="text-[10px] text-slate-400 uppercase font-bold">Saldo Devedor</p>
+                  <p className="text-lg font-bold text-amber-600">{saldoDevedor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
+                </div>
+                <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
+                  <p className="text-[10px] text-slate-400 uppercase font-bold">Parcelas</p>
+                  <p className="text-lg font-bold text-slate-800">{parcelasCount}x</p>
+                </div>
+                <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
+                  <p className="text-[10px] text-slate-400 uppercase font-bold">Valor/Parcela</p>
+                  <p className="text-lg font-bold text-brand-600">{valorParcela.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
+                </div>
               </div>
 
-              {formData.has_permutation && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-fade-in pt-4 mt-2 border-t border-slate-200">
+              {isFullyCovered && (
+                <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-xl mb-4 flex items-center gap-3 animate-fade-in">
+                  <Icons.CheckCircle size={24} className="text-emerald-600 shrink-0" />
                   <div>
-                    <label className="block text-xs font-bold text-slate-600 mb-1">Valor Abatido da Permuta (R$)</label>
-                    <input type="number" value={formData.permutation_value} onChange={e => setFormData({ ...formData, permutation_value: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-slate-200 outline-none text-sm font-bold text-brand-700" placeholder="Ex: 80000" />
+                    <p className="text-sm font-bold text-emerald-800">Venda Quitada (À Vista)</p>
+                    <p className="text-xs text-emerald-600">O valor total já está coberto. Não haverá parcelas futuras.</p>
+                  </div>
+                </div>
+              )}
+
+              {!formData.sale_is_cash && saldoDevedor > 0 && (
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1">Nº de Parcelas</label>
+                    <input type="number" min="1" value={formData.installments_count} onChange={e => setFormData({ ...formData, installments_count: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-slate-200 outline-none focus:border-brand-500 text-sm" />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-slate-600 mb-1">Descrição do Bem</label>
-                    <input type="text" value={formData.permutation_details} onChange={e => setFormData({ ...formData, permutation_details: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-slate-200 outline-none text-sm" placeholder="Ex: Hilux 2022 Branca" />
+                    <label className="block text-xs font-bold text-slate-600 mb-1">Dia de Vencimento</label>
+                    <input type="number" min="1" max="31" value={formData.due_day} onChange={e => setFormData({ ...formData, due_day: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-slate-200 outline-none focus:border-brand-500 text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1">Índice de Reajuste</label>
+                    <select value={formData.readjustment_index} onChange={e => setFormData({ ...formData, readjustment_index: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-slate-200 outline-none focus:border-brand-500 text-sm">
+                      <option value="IPCA">IPCA</option>
+                      <option value="IGPM">IGPM</option>
+                      <option value="INCC">INCC</option>
+                      <option value="FIXO">Fixo (Sem Reajuste)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1">Juros Mensal (%)</label>
+                    <input type="number" step="0.1" value={formData.interest_rate} onChange={e => setFormData({ ...formData, interest_rate: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-slate-200 outline-none focus:border-brand-500 text-sm" />
                   </div>
                 </div>
               )}
             </section>
 
-            {/* RESUMO DO FECHAMENTO (MÁGICA MATEMÁTICA) */}
-            <section className="bg-slate-900 text-white p-5 rounded-xl border border-slate-800 shadow-xl relative overflow-hidden">
-              <div className="absolute top-0 right-0 p-4 opacity-5"><Icons.Calculator size={100} /></div>
-              <h3 className="text-sm font-bold uppercase tracking-wider mb-4 flex items-center gap-2 text-brand-400">
-                <Icons.CheckCircle size={16} /> Resumo Financeiro do Fechamento
-              </h3>
-              <div className="space-y-2 text-sm relative z-10">
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Valor Total Negociado:</span>
-                  <span className="font-bold">R$ {totalValue.toLocaleString('pt-BR')}</span>
-                </div>
-                {downPayment > 0 && <div className="flex justify-between text-slate-300"><span>(-) Sinal / Entrada:</span><span>R$ {downPayment.toLocaleString('pt-BR')}</span></div>}
-                {financing > 0 && <div className="flex justify-between text-slate-300"><span>(-) Financiamento:</span><span>R$ {financing.toLocaleString('pt-BR')}</span></div>}
-                {permutation > 0 && <div className="flex justify-between text-slate-300"><span>(-) Permuta:</span><span>R$ {permutation.toLocaleString('pt-BR')}</span></div>}
-                {consortium > 0 && <div className="flex justify-between text-slate-300"><span>(-) Consórcio:</span><span>R$ {consortium.toLocaleString('pt-BR')}</span></div>}
-                
-                <div className="pt-3 mt-3 border-t border-slate-700 flex justify-between items-end">
-                  <div>
-                    <span className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">= Saldo a Parcelar Direto</span>
-                    {!formData.sale_is_cash && saldoDevedor > 0 && (
-                      <span className="text-xs text-brand-400 font-medium">Serão geradas {parcelasCount}x de R$ {valorParcela.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}</span>
-                    )}
-                    {formData.sale_is_cash && <span className="text-xs text-emerald-400 font-bold bg-emerald-900/50 px-2 py-1 rounded">PAGAMENTO À VISTA</span>}
-                  </div>
-                  <span className={`text-xl font-black ${saldoDevedor < 0 ? 'text-red-400' : 'text-white'}`}>
-                    R$ {saldoDevedor.toLocaleString('pt-BR')}
-                  </span>
-                </div>
-                {saldoDevedor < 0 && (
-                  <p className="text-[10px] text-red-400 mt-2 bg-red-900/30 p-2 rounded border border-red-800/50">
-                    Aviso: A soma da entrada e recursos ultrapassou o valor total do imóvel. Revise os valores.
-                  </p>
-                )}
-              </div>
-            </section>
             </fieldset>
-
           </form>
         </div>
 
-        <div className="p-6 border-t border-slate-100 flex justify-end gap-3 bg-white shrink-0">
-          <button type="button" onClick={onClose} className="px-5 py-2.5 rounded-xl font-bold text-slate-600 hover:bg-slate-50 transition-colors border border-slate-200">
-            Cancelar
-          </button>
+        <div className="p-6 border-t border-slate-100 bg-slate-50 flex justify-between items-center shrink-0">
           {!contractData && (
-            <button type="submit" form="sale-form" disabled={loading || saldoDevedor < 0} className="px-6 py-2.5 rounded-xl font-bold bg-brand-600 text-white hover:bg-brand-700 transition-colors disabled:opacity-50 flex items-center gap-2 shadow-lg">
-              {loading ? 'Processando...' : 'Registrar Venda'} <Icons.ArrowRight size={18} />
+            <button type="button" onClick={handleGeneratePDF} className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-100 transition-colors text-sm font-bold">
+              <Icons.FileText size={16} /> Gerar PDF (Pré-visualização)
             </button>
           )}
+          {contractData && <div></div>}
+          <div className="flex gap-3">
+            <button type="button" onClick={onClose} className="px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-100 transition-colors text-sm font-bold">Cancelar</button>
+            {!contractData && (
+              <button type="submit" form="sale-form" disabled={loading} className="px-6 py-2 bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition-colors text-sm font-bold disabled:opacity-50 flex items-center gap-2">
+                {loading ? <><Icons.Loader2 size={16} className="animate-spin" /> Salvando...</> : <><Icons.Save size={16} /> Salvar Contrato</>}
+              </button>
+            )}
+          </div>
         </div>
 
       </div>
