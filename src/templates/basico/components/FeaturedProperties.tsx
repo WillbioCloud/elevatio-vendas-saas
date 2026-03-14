@@ -128,7 +128,7 @@ export function FeaturedProperties() {
                         </p>
                       </div>
                       <Link
-                        to={`/imoveis/${property.slug || property.id}`}
+                        to={`/imovel/${property.slug || property.id}`}
                         className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider px-4 py-2.5 rounded-xl border transition-all duration-300 hover:opacity-80"
                         style={{ borderColor: primaryColor + '40', color: primaryColor }}
                       >

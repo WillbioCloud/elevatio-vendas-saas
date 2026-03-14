@@ -32,6 +32,10 @@ import ModernPropertyDetail from './modern/pages/ModernPropertyDetail';
 import LuxuryProperties from './luxury/pages/Properties';
 import LuxuryPropertyDetail from './luxury/pages/PropertyDetail';
 
+// Páginas específicas Básico
+import BasicoProperties from './basico/pages/BasicoProperties';
+import BasicoPropertyDetail from './basico/pages/BasicoPropertyDetail';
+
 export default function TenantRouter() {
   const { tenant, isLoadingTenant } = useTenant();
 
@@ -72,11 +76,13 @@ export default function TenantRouter() {
   const PropertiesPage =
     templateName === 'luxury' ? LuxuryProperties :
     templateName === 'modern' ? ModernProperties :
+    templateName === 'basico' ? BasicoProperties :
     Properties;
 
   const PropertyDetailPage =
     templateName === 'luxury' ? LuxuryPropertyDetail :
     templateName === 'modern' ? ModernPropertyDetail :
+    templateName === 'basico' ? BasicoPropertyDetail :
     PropertyDetail;
 
   return (
@@ -84,10 +90,12 @@ export default function TenantRouter() {
       <Route element={<Layout />}>
         {/* Home dinâmica dependendo do template */}
         <Route index element={<Home />} />
-        
+
         {/* Páginas internas */}
         <Route path="imoveis" element={<PropertiesPage />} />
-        <Route path="imoveis/:slug" element={<PropertyDetailPage />} />
+        {/* Aceita tanto id quanto slug como parâmetro genérico */}
+        <Route path="imovel/:id" element={<PropertyDetailPage />} />
+        <Route path="imovel/:slug" element={<PropertyDetailPage />} />
         <Route path="sobre" element={<About />} />
         <Route path="servicos" element={<Services />} />
       </Route>

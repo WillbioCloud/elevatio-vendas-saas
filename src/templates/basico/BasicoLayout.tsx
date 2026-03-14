@@ -31,11 +31,10 @@ const BasicoLayout: React.FC = () => {
   const whatsappLink = whatsapp ? `https://wa.me/${whatsapp.replace(/\D/g, '')}` : '#contato';
 
   const navLinks = [
-    { label: 'Home', href: '#home' },
-    { label: 'Serviços', href: '#servicos' },
-    { label: 'Imóveis', href: '#imoveis' },
-    { label: 'Sobre', href: '#sobre' },
-    { label: 'Contato', href: '#contato' },
+    { label: 'Home', href: '/' },
+    { label: 'Serviços', href: '/#servicos' },
+    { label: 'Imóveis', href: '/imoveis' },
+    { label: 'Sobre Nós', href: '/#sobre' },
   ];
 
   return (
