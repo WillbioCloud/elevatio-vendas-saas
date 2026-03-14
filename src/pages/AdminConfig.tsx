@@ -1699,6 +1699,39 @@ const AdminConfig: React.FC = () => {
                   </p>
                 </div>
               </div>
+
+              {/* Opção Básico */}
+              <div
+                onClick={() => setSiteTemplate('basico')}
+                className={`cursor-pointer rounded-xl border-2 transition-all overflow-hidden flex flex-col ${
+                  siteTemplate === 'basico'
+                    ? 'border-brand-500 ring-4 ring-brand-500/20'
+                    : 'border-slate-200 dark:border-slate-700 hover:border-brand-300'
+                }`}
+              >
+                <div className="h-40 bg-[#0e0e0e] p-4 flex flex-col items-center justify-center border-b border-slate-800 relative overflow-hidden">
+                  <div className="w-full h-5 bg-white/5 rounded mb-3 flex items-center px-2 gap-1">
+                    <div className="w-2 h-2 rounded-full bg-white/20"></div>
+                    <div className="flex-1 h-1.5 bg-white/10 rounded-full"></div>
+                    <div className="w-12 h-3 bg-amber-700/60 rounded"></div>
+                  </div>
+                  <div className="w-full h-20 bg-white/5 rounded flex items-center justify-center">
+                    <div className="text-center">
+                      <div className="w-24 h-3 bg-amber-700/40 rounded mx-auto mb-2"></div>
+                      <div className="w-16 h-2 bg-white/10 rounded mx-auto"></div>
+                    </div>
+                  </div>
+                </div>
+                <div className="p-4 bg-white dark:bg-dark-card flex-grow">
+                  <div className="flex justify-between items-center mb-1">
+                    <h4 className="font-bold text-slate-800 dark:text-white">Básico</h4>
+                    {siteTemplate === 'basico' && <Icons.CheckCircle className="text-brand-500" size={20} />}
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    Layout One-Page rápido, focado em alta conversão e direto ao ponto. Fundo escuro elegante.
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
 

@@ -13,12 +13,24 @@ import MinimalistHome from './minimalist/pages/Home';
 import LuxuryHome from './luxury/pages/Home';
 import ModernHome from './modern/pages/Home';
 import ClassicHome from './classic/pages/Home';
+import BasicoHome from './basico/pages/Home';
 
-// Páginas Internas Compartilhadas
+// Layout Básico
+import BasicoLayout from './basico/BasicoLayout';
+
+// Páginas Internas Compartilhadas (Classic / fallback)
 import Properties from './classic/pages/Properties';
 import PropertyDetail from './classic/pages/PropertyDetail';
 import About from './classic/pages/About';
 import Services from './classic/pages/Services';
+
+// Páginas específicas Modern
+import ModernProperties from './modern/pages/ModernProperties';
+import ModernPropertyDetail from './modern/pages/ModernPropertyDetail';
+
+// Páginas específicas Luxury
+import LuxuryProperties from './luxury/pages/Properties';
+import LuxuryPropertyDetail from './luxury/pages/PropertyDetail';
 
 export default function TenantRouter() {
   const { tenant, isLoadingTenant } = useTenant();
@@ -47,13 +59,25 @@ export default function TenantRouter() {
     templateName === 'luxury' ? LuxuryLayout : 
     templateName === 'modern' ? ModernLayout : 
     templateName === 'minimalist' ? MinimalistLayout : 
+    templateName === 'basico' ? BasicoLayout :
     ClassicLayout;
 
   const Home = 
     templateName === 'luxury' ? LuxuryHome : 
     templateName === 'modern' ? ModernHome : 
     templateName === 'minimalist' ? MinimalistHome : 
+    templateName === 'basico' ? BasicoHome :
     ClassicHome;
+
+  const PropertiesPage =
+    templateName === 'luxury' ? LuxuryProperties :
+    templateName === 'modern' ? ModernProperties :
+    Properties;
+
+  const PropertyDetailPage =
+    templateName === 'luxury' ? LuxuryPropertyDetail :
+    templateName === 'modern' ? ModernPropertyDetail :
+    PropertyDetail;
 
   return (
     <Routes>
@@ -62,8 +86,8 @@ export default function TenantRouter() {
         <Route index element={<Home />} />
         
         {/* Páginas internas */}
-        <Route path="imoveis" element={<Properties />} />
-        <Route path="imoveis/:slug" element={<PropertyDetail />} />
+        <Route path="imoveis" element={<PropertiesPage />} />
+        <Route path="imoveis/:slug" element={<PropertyDetailPage />} />
         <Route path="sobre" element={<About />} />
         <Route path="servicos" element={<Services />} />
       </Route>

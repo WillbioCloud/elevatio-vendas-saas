@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useTenant } from '../../../contexts/TenantContext';
 import { supabase } from '../../../lib/supabase';
-import LuxuryPropertyCard, { LuxuryProperty } from '../../../components/luxury/LuxuryPropertyCard';
+import LuxuryPropertyCard, { LuxuryProperty } from '../../../templates/luxury/components/LuxuryPropertyCard';
 
 // ─── Tipos de filtros ─────────────────────────────────────────
 interface Filters {

@@ -70,17 +70,18 @@ export default function LuxuryPropertyDetail() {
   useEffect(() => {
     if (!slug || !tenant?.id) return;
     setLoading(true);
-    supabase
-      .from('properties')
-      .select('*')
-      .eq('company_id', tenant.id)
-      .or(`slug.eq.${slug},id.eq.${slug}`)
-      .single()
-      .then(({ data, error }) => {
-        if (error || !data) { navigate('/imoveis'); return; }
-        setProperty(data as FullProperty);
-        setLoading(false);
-      });
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(slug);
+    let query = supabase.from('properties').select('*').eq('company_id', tenant.id);
+    if (isUuid) {
+      query = query.eq('id', slug);
+    } else {
+      query = query.eq('slug', slug);
+    }
+    query.single().then(({ data, error }) => {
+      if (error || !data) { console.error('Erro ao buscar imóvel:', error); navigate('/imoveis'); return; }
+      setProperty(data as FullProperty);
+      setLoading(false);
+    });
   }, [slug, tenant?.id]);
 
   // Keyboard navigation no lightbox
