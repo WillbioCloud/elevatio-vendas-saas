@@ -18,11 +18,11 @@ const PLANS = [
     name: 'Starter', price: 54.90,
     desc: 'Ideal para corretores independentes que estão começando.',
     highlight: false,
-    features: ['Até 2 usuários', 'Até 50 imóveis', '50 descrições com IA/mês', 'CRM Básico'],
+    features: ['Até 2 usuários', 'Até 50 imóveis', 'Até 25 fotos/imóvel', '50 descrições com IA/mês', 'CRM Básico'],
     // Capacidade
     users: '2', properties: '50', photos: '40',
     // CRM
-    funnel: true, pipeline: false, gamification: false, erp: false,
+    funnel: true, pipeline: true, gamification: false, erp: false,
     // IA
     ia: '50/dia', aura: false,
     // Marketing
@@ -34,7 +34,7 @@ const PLANS = [
     name: 'Basic', price: 74.90,
     desc: 'Para pequenas imobiliárias com foco em crescimento.',
     highlight: false,
-    features: ['Até 5 usuários', 'Até 400 imóveis', 'Pipeline de Leads', 'Gestão de Tarefas'],
+    features: ['Até 5 usuários', 'Até 400 imóveis', 'Até 35 fotos/imóvel', 'Pipeline de Leads', 'Gestão de Tarefas'],
     users: '5', properties: '400', photos: '60',
     funnel: true, pipeline: true, gamification: false, erp: false,
     ia: '200/dia', aura: false,
@@ -45,9 +45,9 @@ const PLANS = [
     name: 'Profissional', price: 119.90,
     desc: 'O padrão da indústria para imobiliárias consolidadas.',
     highlight: true, badge: 'Mais popular',
-    features: ['Até 8 usuários', 'Até 1.000 imóveis', 'Gamificação', 'Relatórios Avançados'],
+    features: ['Até 8 usuários', 'Até 1.000 imóveis', 'Até 50 fotos/imóvel', 'Contratos e Finanças/15 contratos ativos', 'Gamificação', 'Relatórios Avançados'],
     users: '8', properties: '1.000', photos: 'Ilimitado',
-    funnel: true, pipeline: true, gamification: true, erp: false,
+    funnel: true, pipeline: true, gamification: true, erp: true,
     ia: '600/dia', aura: false,
     site: true, portals: false, email_auto: false, api: true,
     support: 'Chat Prioritário',
@@ -56,7 +56,7 @@ const PLANS = [
     name: 'Business', price: 179.90,
     desc: 'Para quem precisa de controle total e automação.',
     highlight: false,
-    features: ['Até 12 usuários', 'Até 2.000 imóveis', 'Contratos e Finanças', 'Automação de Marketing'],
+    features: ['Até 12 usuários', 'Até 2.000 imóveis', 'Até 50 fotos/imóvel', 'Até 25 contratos ativos', 'Automação de Marketing'],
     users: '12', properties: '2.000', photos: 'Ilimitado',
     funnel: true, pipeline: true, gamification: true, erp: true,
     ia: '1.000/dia', aura: false,
@@ -67,7 +67,7 @@ const PLANS = [
     name: 'Premium', price: 249.90,
     desc: 'Tecnologia de ponta com IA para alta performance.',
     highlight: false,
-    features: ['Até 20 usuários', 'Até 3.500 imóveis', 'Aura AI (Assistente)', 'Integração de Portais'],
+    features: ['Até 20 usuários', 'Até 3.500 imóveis', 'Até 65 fotos/imóvel', 'Até 50 contratos ativos', 'Aura AI (Assistente)', 'Integração de Portais'],
     users: '20', properties: '3.500', photos: 'Ilimitado',
     funnel: true, pipeline: true, gamification: true, erp: true,
     ia: '1.450/dia', aura: 'Liberada',
@@ -78,7 +78,7 @@ const PLANS = [
     name: 'Elite', price: 349.90,
     desc: 'Sem limites. Para os maiores players do mercado.',
     highlight: false,
-    features: ['Usuários Ilimitados', 'Imóveis Ilimitados', 'IA Ilimitada', 'Suporte Dedicado 24/7'],
+    features: ['Usuários Ilimitados', 'Imóveis Ilimitados', 'Até 65 fotos/imóvel', 'Até 100 contratos ativos', 'IA Ilimitada', 'Suporte Dedicado 24/7'],
     users: 'Ilimitado', properties: 'Ilimitado', photos: 'Ilimitado',
     funnel: true, pipeline: true, gamification: true, erp: true,
     ia: 'Ilimitado', aura: 'Prioridade VIP',
@@ -215,7 +215,7 @@ const MENU_FUNC = [
 const MENU_PLANS: { label: string; desc: string; highlight?: boolean }[] = [
   { label: 'Starter', desc: 'Para corretores iniciantes e autônomos.' },
   { label: 'Basic', desc: 'Para pequenas equipes em crescimento.' },
-  { label: 'Profissional', desc: 'O padrão da indústria consolidada.' },
+  { label: 'Profissional', desc: 'O padrão da indústria consolidada.', highlight: true },
   { label: 'Business', desc: 'Controle total e automação avançada.' },
   { label: 'Premium', desc: 'Tecnologia de ponta com IA.' },
   { label: 'Elite', desc: 'Recursos ilimitados para grandes negócios.' },
@@ -475,9 +475,9 @@ const Hero: React.FC = () => {
 // não é confiável (seção pode já estar visível no mount).
 // IntersectionObserver é mais simples e sempre funciona.
 const STATS_PARSED = [
-  { num: 1,    prefix: '',  suffix: 'K+', label: 'Sites criados para imobiliárias' },
+  { num: 200,    prefix: '+',  suffix: '', label: 'Sites criados para imobiliárias' },
   { num: 100,  prefix: '',  suffix: '%',  label: 'Disponibilidade garantida' },
-  { num: 1600, prefix: '',  suffix: '',   label: 'Leads gerenciados por mês' },
+  { num: 1600, prefix: '',  suffix: '',   label: 'Leads gerenciados por mês (possibilidades infinitas)' },
   { num: 3,    prefix: '+', suffix: 'M',  label: 'Imóveis cadastrados' },
 ];
 

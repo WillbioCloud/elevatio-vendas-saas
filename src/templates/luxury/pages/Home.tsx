@@ -2,31 +2,22 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTenant } from '../../../contexts/TenantContext';
 import { supabase } from '../../../lib/supabase';
+import LuxuryPropertyCard, { LuxuryProperty } from '../components/LuxuryPropertyCard';
 
-// ─── Tipos ────────────────────────────────────────────────────
-interface Property {
-  id: string;
-  title: string;
-  city: string;
-  neighborhood: string;
-  bedrooms: number;
-  area: number;
-  images: string[];
-}
-
-// ─── Hook: buscar imóveis do tenant ───────────────────────────
+// ─── Hook: buscar imóveis em destaque ─────────────────────────
 function useFeaturedProperties(companyId: string | undefined) {
-  const [properties, setProperties] = useState<Property[]>([]);
+  const [properties, setProperties] = useState<LuxuryProperty[]>([]);
   useEffect(() => {
     if (!companyId) return;
     supabase
       .from('properties')
-      .select('id, title, city, neighborhood, bedrooms, area, images')
+      .select('id, title, slug, price, type, listing_type, bedrooms, bathrooms, area, suites, garage, city, neighborhood, state, images, featured, status')
       .eq('company_id', companyId)
-      .eq('status', 'active')
+      .eq('status', 'Disponível')
+      .order('featured', { ascending: false })
       .order('created_at', { ascending: false })
       .limit(6)
-      .then(({ data }) => { if (data) setProperties(data as Property[]); });
+      .then(({ data }) => { if (data) setProperties(data as LuxuryProperty[]); });
   }, [companyId]);
   return properties;
 }
@@ -77,70 +68,6 @@ const FaqItem: React.FC<{ question: string; answer: string; defaultOpen?: boolea
   );
 };
 
-// ─── HERO IMAGE placeholder ───────────────────────────────────
-const HeroPlaceholder: React.FC = () => (
-  <div style={{
-    position: 'absolute', inset: 0,
-    background: 'linear-gradient(160deg, #1a1a1a 0%, #0e0e0e 100%)',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-  }}>
-    <svg width="80" height="80" viewBox="0 0 80 80" fill="none" opacity="0.1">
-      <rect x="8" y="32" width="64" height="40" rx="4" stroke="white" strokeWidth="2"/>
-      <path d="M8 40l32-24 32 24" stroke="white" strokeWidth="2"/>
-      <rect x="28" y="52" width="24" height="20" rx="2" stroke="white" strokeWidth="2"/>
-    </svg>
-  </div>
-);
-
-// ─── Property Card ────────────────────────────────────────────
-const PropertyCard: React.FC<{ property: Property; index: number }> = ({ property, index }) => {
-  const img = property.images?.[0];
-  return (
-    <Link
-      to={`/imoveis/${property.id}`}
-      style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}
-    >
-      <div
-        className="lx-prop-card"
-        style={{ animation: `lx-fade-in 0.5s ease ${index * 0.08}s both` }}
-      >
-        {/* Imagem */}
-        <div style={{ borderRadius: 20, overflow: 'hidden', aspectRatio: '4/3', background: '#1a1a1a', marginBottom: 20, position: 'relative' }}>
-          {img ? (
-            <img
-              src={img}
-              alt={property.title}
-              style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'transform 0.5s ease' }}
-              className="lx-prop-img"
-            />
-          ) : (
-            <HeroPlaceholder />
-          )}
-        </div>
-        {/* Info */}
-        <h3 style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 18, fontWeight: 600, marginBottom: 12, color: '#fff' }}>
-          {property.title}
-        </h3>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {[
-            { icon: 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5S10.62 6.5 12 6.5s2.5 1.12 2.5 2.5S13.38 11.5 12 11.5z', label: `${property.neighborhood || property.city}` },
-            { icon: 'M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z', label: `${property.bedrooms || 0} quartos` },
-            { icon: 'M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z', label: `${property.area || 0} m²` },
-          ].map((item, i) => (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="rgba(255,255,255,0.3)">
-                <path d={item.icon}/>
-              </svg>
-              <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 13, color: 'rgba(255,255,255,0.4)' }}>
-                {item.label}
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </Link>
-  );
-};
 
 // ─── MAIN COMPONENT ───────────────────────────────────────────
 export default function LuxuryHome() {
@@ -175,9 +102,6 @@ export default function LuxuryHome() {
           from { opacity: 0; transform: translateY(20px); }
           to   { opacity: 1; transform: translateY(0); }
         }
-        .lx-prop-card { cursor: pointer; }
-        .lx-prop-card:hover .lx-prop-img { transform: scale(1.04); }
-
         .lx-feature-card {
           background: #161616; border-radius: 20px;
           padding: 32px; border: 1px solid rgba(255,255,255,0.06);
@@ -315,7 +239,7 @@ export default function LuxuryHome() {
           {/* Grid */}
           {properties.length > 0 ? (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 28 }}>
-              {properties.map((p, i) => <PropertyCard key={p.id} property={p} index={i} />)}
+              {properties.map((p, i) => <LuxuryPropertyCard key={p.id} property={p} index={i} variant={p.featured ? 'featured' : 'default'} />)}
             </div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 28 }}>
@@ -361,7 +285,12 @@ export default function LuxuryHome() {
             {siteData.whyUsImage ? (
               <img src={siteData.whyUsImage} alt="Por que nós" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             ) : (
-              <HeroPlaceholder />
+              <div style={{ position: 'absolute', inset: 0, background: '#161616', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <svg width="64" height="64" viewBox="0 0 80 80" fill="none" opacity="0.08">
+                  <rect x="8" y="32" width="64" height="40" rx="4" stroke="white" strokeWidth="2"/>
+                  <path d="M8 40l32-24 32 24" stroke="white" strokeWidth="2"/>
+                </svg>
+              </div>
             )}
             <div style={{
               position: 'absolute', top: 24, left: 24,
